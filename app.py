@@ -552,38 +552,6 @@ with col_gen1:
                                 t_path = os.path.join(TEMPLATE_DIR, t_name)
                                 if not os.path.exists(t_path): continue
                                 
-                                is_short = "Short" in t_name
-                                base = PdfReader(t_path)
-                                
-                                if is_short:
-                                    base_page = base.pages[0]
-                                    temp_writer = PdfWriter()
-                                    temp_writer.add_page(base_page)
-                                    target_page = temp_writer.pages[0]
-                                    
-                                    for i in range(0, len(competitor_list), 2):
-                                        comp1 = competitor_list[i]
-                                        comp2 = competitor_list[i+1] if (i+1) < len(competitor_list) else None
-                                        
-                                        base = PdfReader(t_path).pages[0]
-                                        temp_writer = PdfWriter()
-                                        temp_writer.add_page(base)
-                                        target_page = temp_writer.pages[0]
-                                        
-                                        data1 = get_page_data(judge, comp1, contest_context)
-                                        overlay1 = PdfReader(create_overlay(data1, is_short=True)).pages[0]
-                                        apply_margin_to_page(overlay1) # MARGIN INFO ONLY
-                                        target_page.merge_page(overlay1)
-                                        
-                                        if comp2:
-                                            data2 = get_page_data(judge, comp2, contest_context)
-                                            overlay2 = PdfReader(create_overlay(data2, is_short=True)).pages[0]
-                                            apply_margin_to_page(overlay2) # MARGIN INFO ONLY
-                                            overlay2.add_transformation(Transformation().rotate(180).translate(tx=612, ty=792))
-                                            target_page.merge_page(overlay2)
-                                        
-                                        writer.add_page(target_page)
-                                        pages_added += 1
                                 else:
                                     for comp in competitor_list:
                                         page_data = get_page_data(judge, comp, contest_context)
