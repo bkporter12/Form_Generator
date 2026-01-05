@@ -167,15 +167,15 @@ def generate_folder_labels_rtf(judges_df, context):
         c_full = CAT_FULL_NAMES.get(c_short, c_short)
         
         # 1. Judge Name (Bold, 14pt)
-        rtf.append(r"\b\f0\fs48 " + escape_rtf(j1['Name']) + r"\b0\par") 
+        rtf.append(r"\b\f0\fs28 " + escape_rtf(j1['Name']) + r"\b0\par") 
         # 2. Category (11pt)
-        rtf.append(r"\fs22 " + escape_rtf(f"{c_full} Category") + r"\par" + r"\par") 
+        rtf.append(r"\fs22 " + escape_rtf(f"{c_full} Category") + r"\par") 
         # 3. Session (10pt)
-        rtf.append(r"\fs28 " + escape_rtf(context['session']) + r"\par" + r"\par") 
+        rtf.append(r"\fs20 " + escape_rtf(context['session']) + r"\par") 
         # 4. District (10pt)
-        rtf.append(r"\fs20 " + escape_rtf(context['district']) + r"\par")
+        rtf.append(escape_rtf(context['district']) + r"\par")
         # 5. Date (10pt)
-        rtf.append(r"\fs20 " + escape_rtf(context['date']))
+        rtf.append(escape_rtf(context['date']))
         
         rtf.append(r"\cell")
         
@@ -189,15 +189,15 @@ def generate_folder_labels_rtf(judges_df, context):
             c_full2 = CAT_FULL_NAMES.get(c_short2, c_short2)
             
             # 1. Judge Name
-            rtf.append(r"\b\f0\fs48 " + escape_rtf(j2['Name']) + r"\b0\par")
+            rtf.append(r"\b\f0\fs28 " + escape_rtf(j2['Name']) + r"\b0\par")
             # 2. Category
-            rtf.append(r"\fs22 " + escape_rtf(f"{c_full2} Category") + r"\par" + r"\par")
+            rtf.append(r"\fs22 " + escape_rtf(f"{c_full2} Category") + r"\par")
             # 3. Session
-            rtf.append(r"\fs28 " + escape_rtf(context['session']) + r"\par" + r"\par")
+            rtf.append(r"\fs20 " + escape_rtf(context['session']) + r"\par")
             # 4. District
-            rtf.append(r"\fs20 " + escape_rtf(context['district']) + r"\par")
+            rtf.append(escape_rtf(context['district']) + r"\par")
             # 5. Date
-            rtf.append(r"\fs20 " + escape_rtf(context['date']))
+            rtf.append(escape_rtf(context['date']))
         else:
             rtf.append(r"\pard\intbl") 
             
@@ -208,6 +208,10 @@ def generate_folder_labels_rtf(judges_df, context):
     return "".join(rtf)
 
 def balance_and_sort_judges(df):
+    """
+    Ensures balanced panels (adding Absent judges if needed) but relies on 
+    calculate_numbers for the final sorting and numbering.
+    """
     df = df.copy()
     categories = ['MUS', 'PER', 'SNG']
     
@@ -234,29 +238,35 @@ def balance_and_sort_judges(df):
                     })
         if new_rows:
             df = pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True)
-
-    type_sorter = {"Official": 0, "Practice": 1}
-    df['Type_Rank'] = df['Type'].map(type_sorter)
-    cat_sorter = {k: v for v, k in enumerate(categories)}
-    df['Cat_Rank'] = df['Category'].map(cat_sorter)
-    df['Is_Absent'] = df['Name'].str.startswith("Absent").astype(int)
-    
-    def get_last_name(full_name):
-        if pd.isna(full_name) or str(full_name).strip() == "":
-            return ""
-        return str(full_name).strip().split()[-1]
-
-    df['Last_Name'] = df['Name'].apply(get_last_name)
-
-    df = df.sort_values(by=['Type_Rank', 'Cat_Rank', 'Is_Absent', 'Last_Name'])
-    df = df.drop(columns=['Cat_Rank', 'Type_Rank', 'Is_Absent', 'Last_Name'])
+            
     return df
 
 def calculate_numbers(df):
+    """
+    Sorts judges by Category -> Type -> Last Name and assigns numbers.
+    """
     df = df.copy()
+    
+    # 1. Clean Data
     df['Category'] = df['Category'].astype(str).str.upper().str.strip()
     df['Type'] = df['Type'].astype(str).str.title().str.strip()
     
+    # 2. Setup Sorting Helpers
+    # Extract Last Name (using the last word in the string)
+    df['Sort_Last_Name'] = df['Name'].apply(lambda x: str(x).strip().split()[-1] if len(str(x).strip()) > 0 else "")
+    
+    # Map Categories to ensure MUS -> PER -> SNG order
+    cat_sorter = {'MUS': 0, 'PER': 1, 'SNG': 2}
+    df['Sort_Cat'] = df['Category'].map(cat_sorter).fillna(99)
+    
+    # Map Type to ensure Official -> Practice order
+    type_sorter = {'Official': 0, 'Practice': 1}
+    df['Sort_Type'] = df['Type'].map(type_sorter).fillna(99)
+    
+    # 3. Sort the DataFrame
+    df = df.sort_values(by=['Sort_Cat', 'Sort_Type', 'Sort_Last_Name'])
+    
+    # 4. Numbering Logic
     if 'Number' not in df.columns:
         df['Number'] = 0
     
@@ -264,16 +274,22 @@ def calculate_numbers(df):
     current_official_num = 1
     
     for cat in cat_order:
+        # Number Official Judges
         mask_official = (df['Category'] == cat) & (df['Type'] == 'Official')
         count_official = mask_official.sum()
         if count_official > 0:
             df.loc[mask_official, 'Number'] = range(current_official_num, current_official_num + count_official)
             current_official_num += count_official
             
+        # Number Practice Judges
         mask_practice = (df['Category'] == cat) & (df['Type'] == 'Practice')
         count_practice = mask_practice.sum()
         if count_practice > 0:
             df.loc[mask_practice, 'Number'] = range(50, 50 + count_practice)
+            
+    # 5. Cleanup helper columns
+    df = df.drop(columns=['Sort_Last_Name', 'Sort_Cat', 'Sort_Type'])
+    
     return df
 
 def create_overlay(data, is_short=False):
@@ -412,17 +428,28 @@ with col_left:
     st.write("---")
     st.markdown("**Manage Judges List**")
     
-    if st.button("Clear List", key="j_clear"):
-        st.session_state['judges_data'] = pd.DataFrame(columns=["Number", "Name", "Category", "Type", "Print"])
-        if "judge_editor" in st.session_state: del st.session_state["judge_editor"]
-        st.rerun()
+    j_col1, j_col2 = st.columns(2)
+    with j_col1:
+        if st.button("Clear List", key="j_clear"):
+            st.session_state['judges_data'] = pd.DataFrame(columns=["Number", "Name", "Category", "Type", "Print"])
+            if "judge_editor" in st.session_state: del st.session_state["judge_editor"]
+            st.rerun()
+    with j_col2:
+        if st.button("Auto-number Judges", help="Sorts and re-numbers the list based on Category and Name."):
+            # Apply sorting and numbering logic to current data
+            df = st.session_state['judges_data']
+            if not df.empty:
+                df = calculate_numbers(df)
+                st.session_state['judges_data'] = df
+                if "judge_editor" in st.session_state: del st.session_state["judge_editor"]
+                st.rerun()
 
     edited_judges = st.data_editor(
         st.session_state['judges_data'],
         num_rows="dynamic",
         hide_index=True,
         column_config={
-            "Number": st.column_config.NumberColumn("Judge #", disabled=True, width="small", help="Auto-calculated"),
+            "Number": st.column_config.NumberColumn("Judge #", disabled=False, width="small", help="Edit manually or click Auto-number"),
             "Print": st.column_config.CheckboxColumn("Print?", default=True, width="small"),
             "Category": st.column_config.SelectboxColumn("Category", options=["MUS", "PER", "SNG"], required=True),
             "Type": st.column_config.SelectboxColumn("Type", options=["Official", "Practice"], required=True),
@@ -433,9 +460,19 @@ with col_left:
         key="judge_editor"
     )
     
-    recalc_df = calculate_numbers(edited_judges)
-    if not recalc_df.equals(st.session_state['judges_data']):
-         st.session_state['judges_data'] = recalc_df
+    # Save edits AND check for new rows to fill index
+    if not edited_judges.equals(st.session_state['judges_data']):
+         # If new rows are added, they usually have missing/NaN numbers.
+         # We fill them with max_num + 1
+         if edited_judges['Number'].isnull().any():
+             max_num = edited_judges['Number'].max()
+             if pd.isna(max_num): max_num = 0
+             
+             nan_rows = edited_judges[edited_judges['Number'].isnull()].index
+             for i, idx in enumerate(nan_rows):
+                 edited_judges.at[idx, 'Number'] = max_num + 1 + i
+                 
+         st.session_state['judges_data'] = edited_judges
          st.rerun()
 
 
@@ -489,8 +526,19 @@ with col_right:
         use_container_width=True,
         key="comp_editor"
     )
+    
+    # Save edits AND check for new rows to fill index
     if not edited_competitors.equals(st.session_state['competitors_data']):
+        if edited_competitors['Number'].isnull().any():
+             max_num = edited_competitors['Number'].max()
+             if pd.isna(max_num): max_num = 0
+             
+             nan_rows = edited_competitors[edited_competitors['Number'].isnull()].index
+             for i, idx in enumerate(nan_rows):
+                 edited_competitors.at[idx, 'Number'] = max_num + 1 + i
+        
         st.session_state['competitors_data'] = edited_competitors
+        st.rerun()
 
 
 # --- GENERATE FORMS SECTION ---
@@ -552,6 +600,38 @@ with col_gen1:
                                 t_path = os.path.join(TEMPLATE_DIR, t_name)
                                 if not os.path.exists(t_path): continue
                                 
+                                is_short = "Short" in t_name
+                                base = PdfReader(t_path)
+                                
+                                if is_short:
+                                    base_page = base.pages[0]
+                                    temp_writer = PdfWriter()
+                                    temp_writer.add_page(base_page)
+                                    target_page = temp_writer.pages[0]
+                                    
+                                    for i in range(0, len(competitor_list), 2):
+                                        comp1 = competitor_list[i]
+                                        comp2 = competitor_list[i+1] if (i+1) < len(competitor_list) else None
+                                        
+                                        base = PdfReader(t_path).pages[0]
+                                        temp_writer = PdfWriter()
+                                        temp_writer.add_page(base)
+                                        target_page = temp_writer.pages[0]
+                                        
+                                        data1 = get_page_data(judge, comp1, contest_context)
+                                        overlay1 = PdfReader(create_overlay(data1, is_short=True)).pages[0]
+                                        apply_margin_to_page(overlay1) # MARGIN INFO ONLY
+                                        target_page.merge_page(overlay1)
+                                        
+                                        if comp2:
+                                            data2 = get_page_data(judge, comp2, contest_context)
+                                            overlay2 = PdfReader(create_overlay(data2, is_short=True)).pages[0]
+                                            apply_margin_to_page(overlay2) # MARGIN INFO ONLY
+                                            overlay2.add_transformation(Transformation().rotate(180).translate(tx=612, ty=792))
+                                            target_page.merge_page(overlay2)
+                                        
+                                        writer.add_page(target_page)
+                                        pages_added += 1
                                 else:
                                     for comp in competitor_list:
                                         page_data = get_page_data(judge, comp, contest_context)
