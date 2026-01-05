@@ -548,6 +548,7 @@ with col_gen1:
                             pages_added = 0
                             
                             for t_name in templates:
+                                if "Long" not in t_name: continue
                                 t_path = os.path.join(TEMPLATE_DIR, t_name)
                                 if not os.path.exists(t_path): continue
                                 
