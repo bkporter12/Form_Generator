@@ -863,4 +863,24 @@ with st.expander("Print Blank Forms (No Data)", expanded=False):
                 except Exception as e:
                     st.error(f"Error: {e}")
         else:
+
             st.warning("Enter quantity > 0")
+footer = """
+<style>
+.footer {
+    position: fixed;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    background-color: #f0f2f6;
+    color: black;
+    text-align: center;
+    padding: 10px;
+    z-index: 100;
+}
+</style>
+<div class="footer">
+    <p>Tool developed by <a href="https://github.com/bkporter12/Form_Generator" target="_blank">Ben Porter</a></p>
+</div>
+"""
+st.markdown(footer, unsafe_allow_html=True)
