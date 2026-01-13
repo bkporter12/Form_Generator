@@ -445,7 +445,7 @@ with col_left:
                 st.rerun()
 
     edited_judges = st.data_editor(
-        st.session_state['judges_data'],
+        st.session_state['judges_data'].reset_index(drop=True),
         num_rows="dynamic",
         hide_index=True,
         column_config={
@@ -456,7 +456,7 @@ with col_left:
             "Name": st.column_config.TextColumn("Name", required=True)
         },
         column_order=["Number", "Name", "Category", "Type", "Print"],
-        use_container_width=True,
+        width='stretch',
         key="judge_editor"
     )
     
@@ -513,7 +513,7 @@ with col_right:
         st.rerun()
     
     edited_competitors = st.data_editor(
-        st.session_state['competitors_data'],
+        st.session_state['competitors_data'].reset_index(drop=True),
         num_rows="dynamic",
         hide_index=True,
         column_config={
@@ -523,7 +523,7 @@ with col_right:
             "Director": st.column_config.TextColumn("Director (Chorus Only)")
         },
         column_order=["Number", "Name", "Director", "Print"],
-        use_container_width=True,
+        width='stretch',
         key="comp_editor"
     )
     
