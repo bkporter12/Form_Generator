@@ -43,7 +43,7 @@ def escape_rtf(text):
     """Escapes special characters for RTF output."""
     if pd.isna(text): return ""
     text = str(text)
-    return text.replace('\\', '\\\\').replace('{', '\{').replace('}', '\}')
+    return text.replace('\\', '\\\\').replace('{', r'\{').replace('}', r'\}')
 
 def apply_margin_to_page(page, margin_inch=0.25):
     """
@@ -211,8 +211,13 @@ def balance_and_sort_judges(df):
     """
     Ensures balanced panels (adding Absent judges if needed) but relies on 
     calculate_numbers for the final sorting and numbering.
+    Removes existing Absent judges first to avoid duplicates.
     """
     df = df.copy()
+    
+    # Remove existing Absent judges to avoid duplicates
+    df = df[~df['Name'].str.startswith('Absent ', na=False)].copy()
+    
     categories = ['MUS', 'PER', 'SNG']
     
     max_count = 0
@@ -255,6 +260,9 @@ def calculate_numbers(df):
     # Extract Last Name (using the last word in the string)
     df['Sort_Last_Name'] = df['Name'].apply(lambda x: str(x).strip().split()[-1] if len(str(x).strip()) > 0 else "")
     
+    # Mark Absent judges so they sort last in their category
+    df['Sort_Absent'] = df['Name'].str.startswith('Absent ', na=False).astype(int)
+    
     # Map Categories to ensure MUS -> PER -> SNG order
     cat_sorter = {'MUS': 0, 'PER': 1, 'SNG': 2}
     df['Sort_Cat'] = df['Category'].map(cat_sorter).fillna(99)
@@ -263,8 +271,8 @@ def calculate_numbers(df):
     type_sorter = {'Official': 0, 'Practice': 1}
     df['Sort_Type'] = df['Type'].map(type_sorter).fillna(99)
     
-    # 3. Sort the DataFrame
-    df = df.sort_values(by=['Sort_Cat', 'Sort_Type', 'Sort_Last_Name'])
+    # 3. Sort the DataFrame (Absent judges sort last within their category)
+    df = df.sort_values(by=['Sort_Cat', 'Sort_Type', 'Sort_Absent', 'Sort_Last_Name'])
     
     # 4. Numbering Logic
     if 'Number' not in df.columns:
@@ -272,6 +280,7 @@ def calculate_numbers(df):
     
     cat_order = ['MUS', 'PER', 'SNG']
     current_official_num = 1
+    current_practice_num = 50
     
     for cat in cat_order:
         # Number Official Judges
@@ -281,14 +290,15 @@ def calculate_numbers(df):
             df.loc[mask_official, 'Number'] = range(current_official_num, current_official_num + count_official)
             current_official_num += count_official
             
-        # Number Practice Judges
+        # Number Practice Judges (increment across all categories)
         mask_practice = (df['Category'] == cat) & (df['Type'] == 'Practice')
         count_practice = mask_practice.sum()
         if count_practice > 0:
-            df.loc[mask_practice, 'Number'] = range(50, 50 + count_practice)
+            df.loc[mask_practice, 'Number'] = range(current_practice_num, current_practice_num + count_practice)
+            current_practice_num += count_practice
             
     # 5. Cleanup helper columns
-    df = df.drop(columns=['Sort_Last_Name', 'Sort_Cat', 'Sort_Type'])
+    df = df.drop(columns=['Sort_Last_Name', 'Sort_Cat', 'Sort_Type', 'Sort_Absent'])
     
     return df
 
@@ -382,6 +392,10 @@ if 'judges_data' not in st.session_state:
     st.session_state['judges_data'] = pd.DataFrame(columns=["Number", "Name", "Category", "Type", "Print"])
 if 'competitors_data' not in st.session_state:
     st.session_state['competitors_data'] = pd.DataFrame(columns=["Number", "Name", "Director", "Print"])
+if 'judges_uploader_key' not in st.session_state:
+    st.session_state['judges_uploader_key'] = 0
+if 'competitors_uploader_key' not in st.session_state:
+    st.session_state['competitors_uploader_key'] = 0
 
 # 1. CONTEST INPUTS
 with st.container():
@@ -404,7 +418,7 @@ with col_left:
     st.subheader("Judges")
     
     with st.expander("📂 Import Assignments Report", expanded=True):
-        judges_file = st.file_uploader("Upload Assignment Report", type=['csv'], key="j_up", label_visibility="collapsed")
+        judges_file = st.file_uploader("Upload Assignment Report", type=['csv'], key=f"j_up_{st.session_state['judges_uploader_key']}", label_visibility="collapsed")
         if judges_file:
             try:
                 raw_df = pd.read_csv(judges_file)
@@ -418,9 +432,10 @@ with col_left:
                     clean_df = calculate_numbers(clean_df)
                     clean_df = clean_df[['Number', 'Name', 'Category', 'Type', 'Print']]
                     
-                    if not clean_df.equals(st.session_state['judges_data']):
-                        st.session_state['judges_data'] = clean_df
-                        st.rerun()
+                    st.session_state['judges_data'] = clean_df
+                    # Increment key to reset file uploader (discards the file)
+                    st.session_state['judges_uploader_key'] += 1
+                    st.rerun()
             except Exception as e:
                 st.error(f"Error: {e}")
 
@@ -432,13 +447,15 @@ with col_left:
     with j_col1:
         if st.button("Clear List", key="j_clear"):
             st.session_state['judges_data'] = pd.DataFrame(columns=["Number", "Name", "Category", "Type", "Print"])
+            st.session_state['judges_uploader_key'] += 1
             if "judge_editor" in st.session_state: del st.session_state["judge_editor"]
             st.rerun()
     with j_col2:
-        if st.button("Auto-number Judges", help="Sorts and re-numbers the list based on Category and Name."):
-            # Apply sorting and numbering logic to current data
+        if st.button("Auto-number Judges", help="Balances panels, sorts and re-numbers the list based on Category and Name."):
+            # Apply balancing, sorting and numbering logic to current data
             df = st.session_state['judges_data']
             if not df.empty:
+                df = balance_and_sort_judges(df)
                 df = calculate_numbers(df)
                 st.session_state['judges_data'] = df
                 if "judge_editor" in st.session_state: del st.session_state["judge_editor"]
@@ -481,7 +498,7 @@ with col_right:
     st.subheader("Competitors")
     
     with st.expander("📂 Import DRCJ Report", expanded=True):
-        competitors_file = st.file_uploader("Upload CSV (OA, Group Name...)", type=['csv'], key="j_comp", label_visibility="collapsed")
+        competitors_file = st.file_uploader("Upload CSV (OA, Group Name...)", type=['csv'], key=f"j_comp_{st.session_state['competitors_uploader_key']}", label_visibility="collapsed")
         if competitors_file:
             try:
                 raw_c = pd.read_csv(competitors_file)
@@ -497,9 +514,10 @@ with col_right:
                          new_comp['Director'] = ""
                     new_comp['Print'] = True
                     
-                    if not new_comp.equals(st.session_state['competitors_data']):
-                        st.session_state['competitors_data'] = new_comp
-                        st.rerun()
+                    st.session_state['competitors_data'] = new_comp
+                    # Increment key to reset file uploader (discards the file)
+                    st.session_state['competitors_uploader_key'] += 1
+                    st.rerun()
             except Exception as e:
                 st.error(f"Error reading CSV: {e}")
 
@@ -509,6 +527,7 @@ with col_right:
     
     if st.button("Clear List", key="c_clear"):
         st.session_state['competitors_data'] = pd.DataFrame(columns=["Number", "Name", "Director", "Print"])
+        st.session_state['competitors_uploader_key'] += 1
         if "comp_editor" in st.session_state: del st.session_state["comp_editor"]
         st.rerun()
     
