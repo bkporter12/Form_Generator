@@ -4,6 +4,8 @@ import io
 import os
 import zipfile
 import datetime
+import tempfile  # <--- NEW
+import gc        # <--- NEW
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from pypdf import PdfReader, PdfWriter, Transformation
@@ -679,7 +681,7 @@ with col_gen1:
         else:
             st.error("Missing Data")
 
-# --- OPTION 2: BY CATEGORY ---
+# --- OPTION 2: BY CATEGORY (OPTIMIZED) ---
 with col_gen2:
     st.markdown("### Option 2: By Category")
     st.write("Creates bulk PDFs for each Category/Format.")
@@ -688,86 +690,128 @@ with col_gen2:
         if not c_district:
             st.error("Please fill in District.")
         elif has_judges and not final_competitors.empty:
-            with st.spinner("⏳ Generating Category Files... Please wait."):
+            with st.spinner("⏳ Generating Category Files..."):
                 try:
-                    zip_buffer = io.BytesIO()
-                    count = 0
-                    with zipfile.ZipFile(zip_buffer, "w") as zf:
-                        active_judges = final_judges[final_judges['Print'] == True]
-                        active_competitors = final_competitors[final_competitors['Print'] == True]
-                        competitor_list = active_competitors.to_dict('records')
+                    # 1. Create a temporary file for the ZIP archive on DISK (saves RAM)
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp_zip_file:
+                        with zipfile.ZipFile(tmp_zip_file, "w", zipfile.ZIP_DEFLATED) as zf:
+                            
+                            active_judges = final_judges[final_judges['Print'] == True]
+                            active_competitors = final_competitors[final_competitors['Print'] == True]
+                            competitor_list = active_competitors.to_dict('records')
 
-                        cats = list(FORMAT_MAPPING.items())
-                        prog_bar = st.progress(0, text="Processing categories...")
-                        total_cats = len(cats)
+                            cats = list(FORMAT_MAPPING.items())
+                            prog_bar = st.progress(0, text="Processing categories...")
+                            total_cats = len(cats)
+                            files_generated = 0
 
-                        for idx, (cat, formats) in enumerate(cats):
-                            prog_bar.progress((idx + 1) / total_cats, text=f"Processing Category: {cat}")
-                            cat_judges = active_judges[active_judges['Category'] == cat]
-                            if cat_judges.empty: continue
+                            for idx, (cat, formats) in enumerate(cats):
+                                prog_bar.progress((idx + 1) / total_cats, text=f"Processing Category: {cat}")
+                                cat_judges = active_judges[active_judges['Category'] == cat]
+                                if cat_judges.empty: continue
 
-                            for t_name in formats:
-                                t_path = os.path.join(TEMPLATE_DIR, t_name)
-                                if not os.path.exists(t_path): continue
+                                for t_name in formats:
+                                    t_path = os.path.join(TEMPLATE_DIR, t_name)
+                                    if not os.path.exists(t_path): continue
 
-                                is_short = "Short" in t_name
-                                writer = PdfWriter()
-                                pages_added = 0
+                                    # OPTIMIZATION: Load template ONCE per format, not inside the loop
+                                    template_reader = PdfReader(t_path)
+                                    base_page_ref = template_reader.pages[0] # Keep a ref to the base page
+                                    
+                                    is_short = "Short" in t_name
+                                    writer = PdfWriter()
+                                    pages_added = 0
 
-                                for _, judge in cat_judges.iterrows():
-                                    if judge['Number'] == 0: continue
+                                    for _, judge in cat_judges.iterrows():
+                                        if judge['Number'] == 0: continue
 
-                                    if is_short:
-                                        for i in range(0, len(competitor_list), 2):
-                                            comp1 = competitor_list[i]
-                                            comp2 = competitor_list[i+1] if (i+1) < len(competitor_list) else None
-                                            base = PdfReader(t_path).pages[0]
-                                            temp_writer = PdfWriter()
-                                            temp_writer.add_page(base)
-                                            target_page = temp_writer.pages[0]
-                                            data1 = get_page_data(judge, comp1, contest_context)
-                                            overlay1 = PdfReader(create_overlay(data1, is_short=True)).pages[0]
-                                            apply_margin_to_page(overlay1) # MARGIN INFO ONLY
-                                            target_page.merge_page(overlay1)
-                                            if comp2:
-                                                data2 = get_page_data(judge, comp2, contest_context)
-                                                overlay2 = PdfReader(create_overlay(data2, is_short=True)).pages[0]
-                                                apply_margin_to_page(overlay2) # MARGIN INFO ONLY
-                                                overlay2.add_transformation(Transformation().rotate(180).translate(tx=612, ty=792))
-                                                target_page.merge_page(overlay2)
-                                            writer.add_page(target_page)
-                                            pages_added += 1
-                                    else:
-                                        for comp in competitor_list:
-                                            page_data = get_page_data(judge, comp, contest_context)
-                                            overlay = PdfReader(create_overlay(page_data, is_short=False))
-                                            template_reader = PdfReader(t_path)
-                                            for i_page, page in enumerate(template_reader.pages):
+                                        if is_short:
+                                            # Step: 2 competitors per page
+                                            for i in range(0, len(competitor_list), 2):
+                                                comp1 = competitor_list[i]
+                                                comp2 = competitor_list[i+1] if (i+1) < len(competitor_list) else None
+                                                
+                                                # Create a fresh page from the pre-loaded template
                                                 temp_writer = PdfWriter()
-                                                temp_writer.add_page(page)
+                                                temp_writer.add_page(base_page_ref)
                                                 target_page = temp_writer.pages[0]
-                                                if i_page == 0:
-                                                    info_page = overlay.pages[0]
-                                                    apply_margin_to_page(info_page) # MARGIN INFO ONLY
-                                                    target_page.merge_page(info_page)
+
+                                                # Overlay 1
+                                                data1 = get_page_data(judge, comp1, contest_context)
+                                                overlay1 = PdfReader(create_overlay(data1, is_short=True)).pages[0]
+                                                apply_margin_to_page(overlay1)
+                                                target_page.merge_page(overlay1)
+
+                                                # Overlay 2 (Rotated)
+                                                if comp2:
+                                                    data2 = get_page_data(judge, comp2, contest_context)
+                                                    overlay2 = PdfReader(create_overlay(data2, is_short=True)).pages[0]
+                                                    apply_margin_to_page(overlay2)
+                                                    overlay2.add_transformation(Transformation().rotate(180).translate(tx=612, ty=792))
+                                                    target_page.merge_page(overlay2)
+
                                                 writer.add_page(target_page)
                                                 pages_added += 1
-                                if pages_added > 0:
-                                    format_suffix = t_name.replace(".pdf", "") 
-                                    fname = f"{safe_session}_{format_suffix}_{safe_date}.pdf"
-                                    pdf_bytes = io.BytesIO()
-                                    writer.write(pdf_bytes)
-                                    zf.writestr(fname, pdf_bytes.getvalue())
-                                    count += 1
+                                        else:
+                                            # Step: 1 competitor per page (Long form)
+                                            for comp in competitor_list:
+                                                page_data = get_page_data(judge, comp, contest_context)
+                                                overlay = PdfReader(create_overlay(page_data, is_short=False))
+                                                
+                                                # Iterate through template pages (usually 1 or 2)
+                                                for i_page, page in enumerate(template_reader.pages):
+                                                    temp_writer = PdfWriter()
+                                                    temp_writer.add_page(page)
+                                                    target_page = temp_writer.pages[0]
+
+                                                    # Only merge info onto the first page
+                                                    if i_page == 0:
+                                                        info_page = overlay.pages[0]
+                                                        apply_margin_to_page(info_page)
+                                                        target_page.merge_page(info_page)
+
+                                                    writer.add_page(target_page)
+                                                    pages_added += 1
+
+                                    # 2. Write this specific PDF to a TEMP FILE on disk, then add to ZIP
+                                    if pages_added > 0:
+                                        format_suffix = t_name.replace(".pdf", "")
+                                        fname = f"{safe_session}_{format_suffix}_{safe_date}.pdf"
+                                        
+                                        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
+                                            writer.write(tmp_pdf)
+                                            tmp_pdf_path = tmp_pdf.name
+                                        
+                                        # Add file from disk to ZIP (efficient)
+                                        zf.write(tmp_pdf_path, fname)
+                                        
+                                        # Clean up temp PDF immediately
+                                        os.unlink(tmp_pdf_path)
+                                        files_generated += 1
+                                    
+                                    # 3. Explicitly clear memory
+                                    del writer
+                                    del template_reader
+                                    gc.collect()
 
                         prog_bar.empty()
 
-                    zip_buffer.seek(0)
-                    if count > 0:
-                        st.success(f"Created {count} Category Files.")
-                        st.download_button("📥 Download Category Files", zip_buffer, f"{safe_session}_Category_Files.zip", "application/zip")
+                    # 4. Serve the ZIP file from disk
+                    if files_generated > 0:
+                        st.success(f"Created {files_generated} Category Files.")
+                        with open(tmp_zip_file.name, "rb") as f:
+                            st.download_button(
+                                "📥 Download Category Files", 
+                                f, 
+                                f"{safe_session}_Category_Files.zip", 
+                                "application/zip"
+                            )
                     else:
                         st.warning("No files generated.")
+                    
+                    # Clean up the ZIP file from disk
+                    os.unlink(tmp_zip_file.name)
+
                 except Exception as e:
                     st.error(f"Error: {e}")
         else:
