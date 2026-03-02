@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import Papa from 'papaparse';
-import { balanceAndSortJudges, generateCategoryPDFs, generateJudgePDFs, generateFolderLabelsRTF } from './utils';
+import { balanceAndSortJudges, generateCategoryPDFs, generateJudgePDFs, generateFolderLabelsRTF, generateOverlaysRTF } from './utils';
 
 export default function App() {
   const [district, setDistrict] = useState("");
@@ -90,6 +90,12 @@ export default function App() {
     generateFolderLabelsRTF(judges.filter(j => j.Print), { district, date, session });
   };
 
+  // NEW: Generate Overlay RTF
+  const generateOverlays = () => {
+    if (!district || !date) return alert("Please fill in District and Date");
+    generateOverlaysRTF(judges.filter(j => j.Print), competitors.filter(c => c.Print), { district, date, session });
+  };
+
   return (
     <div style={{ padding: '30px', fontFamily: 'system-ui, sans-serif', maxWidth: '1200px', margin: '0 auto', color: '#333' }}>
       <h1 style={{ borderBottom: '2px solid #eee', paddingBottom: '10px' }}>📝 Contest Form Generator</h1>
@@ -110,7 +116,7 @@ export default function App() {
         {/* --- JUDGES PANEL --- */}
         <div style={{ flex: 1, background: '#f9f9f9', padding: '20px', borderRadius: '8px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-            <h3 style={{ margin: 0 }}>🧑‍⚖️ Judges</h3>
+            <h3 style={{ margin: 0 }}>🧑‍⚖️ Judges Upload</h3>
             <div style={{ display: 'flex', gap: '5px' }}>
               <button onClick={addJudge} style={{ padding: '4px 8px', cursor: 'pointer' }}>➕ Add</button>
               <button onClick={clearJudges} style={{ padding: '4px 8px', cursor: 'pointer', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px' }}>🗑️ Clear</button>
@@ -256,6 +262,12 @@ export default function App() {
         <button onClick={generateByJudge} disabled={isGenerating || judges.length === 0} style={{ padding: '12px 24px', background: '#17a2b8', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>
           {isGenerating ? "⏳ Generating..." : "📥 Generate PDFs by Judge"}
         </button>
+        
+        {/* NEW BUTTON FOR OVERLAYS */}
+        <button onClick={generateOverlays} disabled={judges.length === 0 || competitors.length === 0} style={{ padding: '12px 24px', background: '#6f42c1', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>
+          📄 Generate Overlays (RTF)
+        </button>
+
         <button onClick={generateLabels} disabled={judges.length === 0} style={{ padding: '12px 24px', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>
           🏷️ Generate Folder Labels (RTF)
         </button>
