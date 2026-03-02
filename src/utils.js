@@ -55,14 +55,24 @@ export function balanceAndSortJudges(judges) {
   let currentOfficial = 1;
   let currentPractice = 50;
 
+  // 1. Assign standard numbers
+  balanced.forEach(j => {
+    if (!j.Name.startsWith("Absent")) {
+      if (j.Type === 'Official') j.Number = currentOfficial++;
+      else if (j.Type === 'Practice') j.Number = currentPractice++;
+    }
+  });
+
+  // 2. Assign Absent numbers (Highest Official in their Category)
   balanced.forEach(j => {
     if (j.Name.startsWith("Absent")) {
-      j.Number = "";
-      j.Print = false;
-    } else if (j.Type === 'Official') {
-      j.Number = currentOfficial++;
-    } else if (j.Type === 'Practice') {
-      j.Number = currentPractice++;
+      j.Print = false; // Always unselectable
+      const officials = balanced.filter(x => x.Category === j.Category && x.Type === 'Official' && !x.Name.startsWith("Absent"));
+      if (officials.length > 0) {
+        j.Number = Math.max(...officials.map(o => o.Number || 0));
+      } else {
+        j.Number = "";
+      }
     }
   });
 
@@ -76,35 +86,59 @@ async function fetchTemplate(templateName) {
   return await res.arrayBuffer();
 }
 
-async function drawOverlayText(page, font, boldFont, data, isShort, isRotated = false) {
+async function drawOverlayText(page, font, boldFont, data, isShort, isRotated = false, applyMargin = false) {
   const { judge_name, judge_num, comp_name, comp_num, district, session, date, director } = data;
-  const transform = (x, y) => isRotated ? { x: 612 - x, y: 792 - y, rotate: degrees(180) } : { x, y, rotate: degrees(0) };
+
+  // 0.25" Margin Transformation Math
+  const s = 576 / 612; // Scale down to fit 0.25" margin on each side
+  const tx = 18;       // Translate X inward by 18 points (0.25")
+  const ty = (792 - (792 * s)) / 2; // Keep Y centered after scale
+
+  const drawText = (text, origX, origY, size, f) => {
+    let x = origX;
+    let y = origY;
+
+    if (isRotated) {
+      x = 612 - x;
+      y = 792 - y;
+    }
+
+    if (applyMargin) {
+      x = (x * s) + tx;
+      y = (y * s) + ty;
+      page.drawText(text, { x, y, size: size * s, font: f, color: rgb(0,0,0), rotate: degrees(isRotated ? 180 : 0) });
+    } else {
+      page.drawText(text, { x, y, size: size, font: f, color: rgb(0,0,0), rotate: degrees(isRotated ? 180 : 0) });
+    }
+  };
 
   let nameText = String(judge_name);
   let numText = String(judge_num || ""); 
   
   if (isShort) {
     const nameWidth = boldFont.widthOfTextAtSize(nameText, 16);
-    page.drawText(nameText, { ...transform(LAYOUT.margin_right - nameWidth, LAYOUT.judge_y), size: 16, font: boldFont, color: rgb(0,0,0) });
+    drawText(nameText, LAYOUT.margin_right - nameWidth, LAYOUT.judge_y, 16, boldFont);
+    
     const numWidth = boldFont.widthOfTextAtSize(numText, 36);
-    page.drawText(numText, { ...transform(LAYOUT.margin_right - nameWidth - 15 - numWidth, LAYOUT.judge_y), size: 36, font: boldFont, color: rgb(0,0,0) });
+    drawText(numText, LAYOUT.margin_right - nameWidth - 15 - numWidth, LAYOUT.judge_y, 36, boldFont);
   } else {
     const text = numText ? `${numText}. ${nameText}` : nameText;
     const textWidth = boldFont.widthOfTextAtSize(text, 16);
-    page.drawText(text, { ...transform(LAYOUT.margin_right - textWidth, LAYOUT.judge_y), size: 16, font: boldFont, color: rgb(0,0,0) });
+    drawText(text, LAYOUT.margin_right - textWidth, LAYOUT.judge_y, 16, boldFont);
   }
 
-  page.drawText(`${comp_num}. ${comp_name}`, { ...transform(LAYOUT.margin_left, LAYOUT.comp_y), size: 12, font: font, color: rgb(0,0,0) });
+  drawText(`${comp_num}. ${comp_name}`, LAYOUT.margin_left, LAYOUT.comp_y, 12, font);
+
   if (!isShort && session.includes("Chorus") && director) {
-    page.drawText(director, { ...transform(LAYOUT.margin_left, LAYOUT.comp_y - 14), size: 12, font: font, color: rgb(0,0,0) });
+    drawText(director, LAYOUT.margin_left, LAYOUT.comp_y - 14, 12, font);
   }
 
   const contestText = `${district} - ${session}, ${date}`;
   const contestWidth = font.widthOfTextAtSize(contestText, 10);
-  page.drawText(contestText, { ...transform(LAYOUT.page_center - (contestWidth / 2), LAYOUT.contest_y), size: 10, font: font, color: rgb(0,0,0) });
+  drawText(contestText, LAYOUT.page_center - (contestWidth / 2), LAYOUT.contest_y, 10, font);
 }
 
-// 1. GENERATE BY CATEGORY
+// 1. GENERATE BY CATEGORY (With 0.25" Margin Applied)
 export async function generateCategoryPDFs(judges, competitors, context) {
   const zip = new JSZip();
   let filesGenerated = 0;
@@ -130,14 +164,14 @@ export async function generateCategoryPDFs(judges, competitors, context) {
             const [copiedPage] = await outputDoc.copyPages(await PDFDocument.load(templateBytes), [0]);
             outputDoc.addPage(copiedPage);
 
-            await drawOverlayText(copiedPage, helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp1.Name, comp_num: comp1.Number }, true, false);
-            if (comp2) await drawOverlayText(copiedPage, helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp2.Name, comp_num: comp2.Number }, true, true);
+            await drawOverlayText(copiedPage, helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp1.Name, comp_num: comp1.Number }, true, false, true);
+            if (comp2) await drawOverlayText(copiedPage, helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp2.Name, comp_num: comp2.Number }, true, true, true);
           }
         } else {
            for (const comp of competitors) {
               const templateDoc = await PDFDocument.load(templateBytes);
               const copiedPages = await outputDoc.copyPages(templateDoc, templateDoc.getPageIndices());
-              await drawOverlayText(copiedPages[0], helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp.Name, comp_num: comp.Number, director: comp.Director }, false, false);
+              await drawOverlayText(copiedPages[0], helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp.Name, comp_num: comp.Number, director: comp.Director }, false, false, true);
               copiedPages.forEach(p => outputDoc.addPage(p));
            }
         }
@@ -154,7 +188,7 @@ export async function generateCategoryPDFs(judges, competitors, context) {
   }
 }
 
-// 2. GENERATE BY JUDGE (NEW)
+// 2. GENERATE BY JUDGE (Long Form Only, No Margin)
 export async function generateJudgePDFs(judges, competitors, context) {
   const zip = new JSZip();
   let filesGenerated = 0;
@@ -173,30 +207,18 @@ export async function generateJudgePDFs(judges, competitors, context) {
     let pagesAdded = 0;
 
     for (const t_name of formats) {
+      if (!t_name.includes("Long")) continue; // Restrict to Long forms only
+
       const templateBytes = await fetchTemplate(t_name).catch(() => null);
       if (!templateBytes) continue;
 
-      const isShort = t_name.includes("Short");
-
-      if (isShort) {
-        for (let i = 0; i < competitors.length; i += 2) {
-          const comp1 = competitors[i];
-          const comp2 = competitors[i + 1];
-          const [copiedPage] = await outputDoc.copyPages(await PDFDocument.load(templateBytes), [0]);
-          outputDoc.addPage(copiedPage);
-
-          await drawOverlayText(copiedPage, helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp1.Name, comp_num: comp1.Number }, true, false);
-          if (comp2) await drawOverlayText(copiedPage, helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp2.Name, comp_num: comp2.Number }, true, true);
-          pagesAdded++;
-        }
-      } else {
-         for (const comp of competitors) {
-            const templateDoc = await PDFDocument.load(templateBytes);
-            const copiedPages = await outputDoc.copyPages(templateDoc, templateDoc.getPageIndices());
-            await drawOverlayText(copiedPages[0], helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp.Name, comp_num: comp.Number, director: comp.Director }, false, false);
-            copiedPages.forEach(p => outputDoc.addPage(p));
-            pagesAdded++;
-         }
+      for (const comp of competitors) {
+        const templateDoc = await PDFDocument.load(templateBytes);
+        const copiedPages = await outputDoc.copyPages(templateDoc, templateDoc.getPageIndices());
+        
+        await drawOverlayText(copiedPages[0], helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp.Name, comp_num: comp.Number, director: comp.Director }, false, false, false);
+        copiedPages.forEach(p => outputDoc.addPage(p));
+        pagesAdded++;
       }
     }
 
@@ -234,12 +256,22 @@ export function generateFolderLabelsRTF(judges, context) {
     
     rtf += `\\trowd\\trgaph108\\trleft0\\trrh2880\\clvertalc\\brdrt\\brdrnil\\brdrl\\brdrnil\\brdrb\\brdrnil\\brdrr\\brdrnil\\cellx5760\\clvertalc\\brdrt\\brdrnil\\brdrl\\brdrnil\\brdrb\\brdrnil\\brdrr\\brdrnil\\cellx6030\\clvertalc\\brdrt\\brdrnil\\brdrl\\brdrnil\\brdrb\\brdrnil\\brdrr\\brdrnil\\cellx11790\n`;
     
+    // Cell 1
     const cFull1 = CAT_FULL_NAMES[j1.Category] || j1.Category;
-    rtf += `\\pard\\intbl\\qc\\sa0\\sb0\\b\\f0\\fs28 ${escapeRTF(j1.Name)}\\b0\\par\\fs22 ${escapeRTF(cFull1)} Category\\par\\fs20 ${escapeRTF(context.session)}\\par${escapeRTF(context.district)}\\par${escapeRTF(context.date)}\\cell\\pard\\intbl\\cell\n`;
+    rtf += `\\pard\\intbl\\qc\\sa0\\sb0\\b\\f0\\fs28 ${escapeRTF(j1.Name)}\\b0\\par ` +
+           `\\fs22 ${escapeRTF(cFull1)} Category\\par ` +
+           `\\fs20 ${escapeRTF(context.session)}\\par ` +
+           `${escapeRTF(context.district)}\\par ` +
+           `${escapeRTF(context.date)}\\cell\\pard\\intbl\\cell\n`;
     
+    // Cell 2 (if exists)
     if (j2) {
       const cFull2 = CAT_FULL_NAMES[j2.Category] || j2.Category;
-      rtf += `\\pard\\intbl\\qc\\sa0\\sb0\\b\\f0\\fs28 ${escapeRTF(j2.Name)}\\b0\\par\\fs22 ${escapeRTF(cFull2)} Category\\par\\fs20 ${escapeRTF(context.session)}\\par${escapeRTF(context.district)}\\par${escapeRTF(context.date)}\\cell\\row\n`;
+      rtf += `\\pard\\intbl\\qc\\sa0\\sb0\\b\\f0\\fs28 ${escapeRTF(j2.Name)}\\b0\\par ` +
+             `\\fs22 ${escapeRTF(cFull2)} Category\\par ` +
+             `\\fs20 ${escapeRTF(context.session)}\\par ` +
+             `${escapeRTF(context.district)}\\par ` +
+             `${escapeRTF(context.date)}\\cell\\row\n`;
     } else {
       rtf += `\\pard\\intbl\\cell\\row\n`;
     }
