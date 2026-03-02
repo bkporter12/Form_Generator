@@ -45,8 +45,19 @@ export function balanceAndSortJudges(judges) {
   const typeOrder = { Official: 0, Practice: 1 };
   
   balanced.sort((a, b) => {
+    // 1. Sort by Category
     if (catOrder[a.Category] !== catOrder[b.Category]) return catOrder[a.Category] - catOrder[b.Category];
+    
+    // 2. Sort by Type (Official vs Practice)
     if (typeOrder[a.Type] !== typeOrder[b.Type]) return typeOrder[a.Type] - typeOrder[b.Type];
+    
+    // 3. Force Absent judges to the end of their panel
+    const isAbsentA = a.Name.startsWith("Absent");
+    const isAbsentB = b.Name.startsWith("Absent");
+    if (isAbsentA && !isAbsentB) return 1;
+    if (!isAbsentA && isAbsentB) return -1;
+    
+    // 4. Sort alphabetically by Last Name
     const lastA = (a.Name || "").trim().split(' ').pop();
     const lastB = (b.Name || "").trim().split(' ').pop();
     return lastA.localeCompare(lastB);
@@ -55,24 +66,17 @@ export function balanceAndSortJudges(judges) {
   let currentOfficial = 1;
   let currentPractice = 50;
 
-  // 1. Assign standard numbers
+  // Assign numbers continuously 
   balanced.forEach(j => {
-    if (!j.Name.startsWith("Absent")) {
-      if (j.Type === 'Official') j.Number = currentOfficial++;
-      else if (j.Type === 'Practice') j.Number = currentPractice++;
+    if (j.Type === 'Official') {
+      j.Number = currentOfficial++;
+    } else if (j.Type === 'Practice') {
+      j.Number = currentPractice++;
     }
-  });
-
-  // 2. Assign Absent numbers (Highest Official in their Category)
-  balanced.forEach(j => {
+    
+    // Ensure Absent judges are always unselectable to prevent generating blank forms
     if (j.Name.startsWith("Absent")) {
-      j.Print = false; // Always unselectable
-      const officials = balanced.filter(x => x.Category === j.Category && x.Type === 'Official' && !x.Name.startsWith("Absent"));
-      if (officials.length > 0) {
-        j.Number = Math.max(...officials.map(o => o.Number || 0));
-      } else {
-        j.Number = "";
-      }
+      j.Print = false;
     }
   });
 
@@ -207,7 +211,7 @@ export async function generateJudgePDFs(judges, competitors, context) {
     let pagesAdded = 0;
 
     for (const t_name of formats) {
-      if (!t_name.includes("Long")) continue; // Restrict to Long forms only
+      if (!t_name.includes("Long")) continue;
 
       const templateBytes = await fetchTemplate(t_name).catch(() => null);
       if (!templateBytes) continue;
@@ -256,7 +260,6 @@ export function generateFolderLabelsRTF(judges, context) {
     
     rtf += `\\trowd\\trgaph108\\trleft0\\trrh2880\\clvertalc\\brdrt\\brdrnil\\brdrl\\brdrnil\\brdrb\\brdrnil\\brdrr\\brdrnil\\cellx5760\\clvertalc\\brdrt\\brdrnil\\brdrl\\brdrnil\\brdrb\\brdrnil\\brdrr\\brdrnil\\cellx6030\\clvertalc\\brdrt\\brdrnil\\brdrl\\brdrnil\\brdrb\\brdrnil\\brdrr\\brdrnil\\cellx11790\n`;
     
-    // Cell 1
     const cFull1 = CAT_FULL_NAMES[j1.Category] || j1.Category;
     rtf += `\\pard\\intbl\\qc\\sa0\\sb0\\b\\f0\\fs28 ${escapeRTF(j1.Name)}\\b0\\par ` +
            `\\fs22 ${escapeRTF(cFull1)} Category\\par ` +
@@ -264,7 +267,6 @@ export function generateFolderLabelsRTF(judges, context) {
            `${escapeRTF(context.district)}\\par ` +
            `${escapeRTF(context.date)}\\cell\\pard\\intbl\\cell\n`;
     
-    // Cell 2 (if exists)
     if (j2) {
       const cFull2 = CAT_FULL_NAMES[j2.Category] || j2.Category;
       rtf += `\\pard\\intbl\\qc\\sa0\\sb0\\b\\f0\\fs28 ${escapeRTF(j2.Name)}\\b0\\par ` +
