@@ -117,7 +117,12 @@ export default function App() {
             </div>
           </div>
           
-          <input type="file" accept=".csv" onChange={handleJudgeUpload} style={{ marginBottom: '15px' }} />
+          <div style={{ marginBottom: '15px' }}>
+            <input type="file" accept=".csv" onChange={handleJudgeUpload} />
+            <div style={{ fontSize: '13px', color: '#555', marginTop: '4px' }}>
+              <em>Note: Please upload the <strong>Assignments Report</strong> (.csv)</em>
+            </div>
+          </div>
           
           {judges.length > 0 && (
             <div style={{ marginBottom: '10px', paddingBottom: '10px', borderBottom: '1px solid #ddd' }}>
@@ -183,7 +188,12 @@ export default function App() {
             </div>
           </div>
           
-          <input type="file" accept=".csv" onChange={handleCompUpload} style={{ marginBottom: '15px' }}/>
+          <div style={{ marginBottom: '15px' }}>
+            <input type="file" accept=".csv" onChange={handleCompUpload} />
+            <div style={{ fontSize: '13px', color: '#555', marginTop: '4px' }}>
+              <em>Note: Please upload the <strong>DRCJ Report</strong> (.csv)</em>
+            </div>
+          </div>
           
           {competitors.length > 0 && (
             <div style={{ marginBottom: '10px', paddingBottom: '10px', borderBottom: '1px solid #ddd' }}>
