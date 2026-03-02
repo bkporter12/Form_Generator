@@ -178,7 +178,7 @@ export default function App() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
             <h3 style={{ margin: 0 }}>🎤 Competitors</h3>
             <div style={{ display: 'flex', gap: '5px' }}>
-              <button onClick={aaddComp} style={{ padding: '4px 8px', cursor: 'pointer' }}>➕ Add</button>
+              <button onClick={addComp} style={{ padding: '4px 8px', cursor: 'pointer' }}>➕ Add</button>
               <button onClick={clearComps} style={{ padding: '4px 8px', cursor: 'pointer', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px' }}>🗑️ Clear</button>
             </div>
           </div>
