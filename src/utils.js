@@ -27,6 +27,7 @@ export function balanceAndSortJudges(judges) {
   
   categories.forEach(cat => {
     const count = judges.filter(j => j.Category === cat && j.Type === 'Official' && !j.Name.startsWith('Absent')).length;
+    if (count > maxCount) count;
     if (count > maxCount) maxCount = count;
   });
 
@@ -45,19 +46,14 @@ export function balanceAndSortJudges(judges) {
   const typeOrder = { Official: 0, Practice: 1 };
   
   balanced.sort((a, b) => {
-    // 1. Sort by Category
     if (catOrder[a.Category] !== catOrder[b.Category]) return catOrder[a.Category] - catOrder[b.Category];
-    
-    // 2. Sort by Type (Official vs Practice)
     if (typeOrder[a.Type] !== typeOrder[b.Type]) return typeOrder[a.Type] - typeOrder[b.Type];
     
-    // 3. Force Absent judges to the end of their panel
     const isAbsentA = a.Name.startsWith("Absent");
     const isAbsentB = b.Name.startsWith("Absent");
     if (isAbsentA && !isAbsentB) return 1;
     if (!isAbsentA && isAbsentB) return -1;
     
-    // 4. Sort alphabetically by Last Name
     const lastA = (a.Name || "").trim().split(' ').pop();
     const lastB = (b.Name || "").trim().split(' ').pop();
     return lastA.localeCompare(lastB);
@@ -66,7 +62,6 @@ export function balanceAndSortJudges(judges) {
   let currentOfficial = 1;
   let currentPractice = 50;
 
-  // Assign numbers continuously 
   balanced.forEach(j => {
     if (j.Type === 'Official') {
       j.Number = currentOfficial++;
@@ -74,7 +69,6 @@ export function balanceAndSortJudges(judges) {
       j.Number = currentPractice++;
     }
     
-    // Ensure Absent judges are always unselectable to prevent generating blank forms
     if (j.Name.startsWith("Absent")) {
       j.Print = false;
     }
@@ -93,10 +87,9 @@ async function fetchTemplate(templateName) {
 async function drawOverlayText(page, font, boldFont, data, isShort, isRotated = false, applyMargin = false) {
   const { judge_name, judge_num, comp_name, comp_num, district, session, date, director } = data;
 
-  // 0.25" Margin Transformation Math
-  const s = 576 / 612; // Scale down to fit 0.25" margin on each side
-  const tx = 18;       // Translate X inward by 18 points (0.25")
-  const ty = (792 - (792 * s)) / 2; // Keep Y centered after scale
+  const s = 576 / 612; 
+  const tx = 18;       
+  const ty = (792 - (792 * s)) / 2; 
 
   const drawText = (text, origX, origY, size, f) => {
     let x = origX;
@@ -142,7 +135,7 @@ async function drawOverlayText(page, font, boldFont, data, isShort, isRotated = 
   drawText(contestText, LAYOUT.page_center - (contestWidth / 2), LAYOUT.contest_y, 10, font);
 }
 
-// 1. GENERATE BY CATEGORY (With 0.25" Margin Applied)
+// 1. GENERATE BY CATEGORY 
 export async function generateCategoryPDFs(judges, competitors, context) {
   const zip = new JSZip();
   let filesGenerated = 0;
@@ -192,7 +185,7 @@ export async function generateCategoryPDFs(judges, competitors, context) {
   }
 }
 
-// 2. GENERATE BY JUDGE (Long Form Only, No Margin)
+// 2. GENERATE BY JUDGE
 export async function generateJudgePDFs(judges, competitors, context) {
   const zip = new JSZip();
   let filesGenerated = 0;
@@ -250,6 +243,7 @@ export async function generateJudgePDFs(judges, competitors, context) {
 // --- RTF GENERATION ---
 const escapeRTF = (text) => String(text || "").replace(/\\/g, '\\\\').replace(/\{/g, '\\{').replace(/\}/g, '\\}');
 
+// 3. GENERATE FOLDER LABELS
 export function generateFolderLabelsRTF(judges, context) {
   let rtf = `{\\rtf1\\ansi\\deff0\\nouicompat\\viewkind4\\uc1{\\fonttbl{\\f0\\fnil\\fcharset0 Arial;}}{\\colortbl ;\\red0\\green0\\blue0;}\\paperw12240\\paperh15840\\margl225\\margr225\\margt720\\margb720\\pard\\plain\\fs20\n`;
   const activeJudges = judges.filter(j => !j.Name.startsWith("Absent"));
@@ -281,4 +275,39 @@ export function generateFolderLabelsRTF(judges, context) {
   rtf += "}";
   const blob = new Blob([rtf], { type: "application/rtf" });
   saveAs(blob, `${context.session.replace(/[^a-z0-9]/gi, '_')}_Folder_Labels.rtf`);
+}
+
+// 4. GENERATE OVERLAYS ONLY (NEW)
+export function generateOverlaysRTF(judges, competitors, context) {
+  // Sets exact page margins to match the PDF coordinates (540 twips = 0.375" top, 1000 twips = ~0.69" sides)
+  let rtf = `{\\rtf1\\ansi\\deff0\\nouicompat\\viewkind4\\uc1{\\fonttbl{\\f0\\fnil\\fcharset0 Arial;}}{\\colortbl ;\\red0\\green0\\blue0;}\\paperw12240\\paperh15840\\margl1000\\margr1000\\margt540\\margb1000\n`;
+  
+  const activeJudges = judges.filter(j => !j.Name.startsWith("Absent"));
+
+  for (const judge of activeJudges) {
+    for (const comp of competitors) {
+      const judgeText = judge.Number ? `${judge.Number}. ${judge.Name}` : judge.Name;
+      
+      // Judge Info (Top Right - 16pt Bold)
+      rtf += `\\pard\\qr\\sa100\\b\\f0\\fs32 ${escapeRTF(judgeText)}\\b0\\par\n`;
+      
+      // Competitor Info (Left Aligned - 12pt)
+      rtf += `\\pard\\ql\\sa100\\fs24 ${escapeRTF(comp.Number + ". " + comp.Name)}\\par\n`;
+      
+      if (context.session.includes("Chorus") && comp.Director) {
+        rtf += `\\pard\\ql\\sa100\\fs24 ${escapeRTF(comp.Director)}\\par\n`;
+      }
+      
+      // Contest Info (Center Aligned - 10pt)
+      const contestText = `${context.district} - ${context.session}, ${context.date}`;
+      rtf += `\\pard\\qc\\fs20 ${escapeRTF(contestText)}\\par\n`;
+      
+      // Hard page break
+      rtf += `\\page\n`;
+    }
+  }
+  
+  rtf += "}";
+  const blob = new Blob([rtf], { type: "application/rtf" });
+  saveAs(blob, `${context.session.replace(/[^a-z0-9]/gi, '_')}_Text_Overlays.rtf`);
 }
