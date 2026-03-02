@@ -110,7 +110,7 @@ export default function App() {
         {/* --- JUDGES PANEL --- */}
         <div style={{ flex: 1, background: '#f9f9f9', padding: '20px', borderRadius: '8px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-            <h3 style={{ margin: 0 }}>🧑‍⚖️ Judges Upload</h3>
+            <h3 style={{ margin: 0 }}>🧑‍⚖️ Judges</h3>
             <div style={{ display: 'flex', gap: '5px' }}>
               <button onClick={addJudge} style={{ padding: '4px 8px', cursor: 'pointer' }}>➕ Add</button>
               <button onClick={clearJudges} style={{ padding: '4px 8px', cursor: 'pointer', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px' }}>🗑️ Clear</button>
