@@ -6,6 +6,7 @@ export default function App() {
   const [district, setDistrict] = useState("");
   const [date, setDate] = useState("");
   const [session, setSession] = useState("Quartet Semi-Finals");
+  const [paperSize, setPaperSize] = useState("Letter");
   
   const [judges, setJudges] = useState([]);
   const [competitors, setCompetitors] = useState([]);
@@ -23,7 +24,7 @@ export default function App() {
         setJudges(balanceAndSortJudges(clean));
       }
     });
-    e.target.value = null; // reset file input
+    e.target.value = null; 
   };
 
   const handleCompUpload = (e) => {
@@ -35,7 +36,7 @@ export default function App() {
         setCompetitors(clean);
       }
     });
-    e.target.value = null; // reset file input
+    e.target.value = null; 
   };
 
   // --- JUDGE HANDLERS ---
@@ -65,7 +66,7 @@ export default function App() {
     if (!district || !date) return alert("Please fill in District and Date");
     setIsGenerating(true);
     try {
-      await generateCategoryPDFs(judges.filter(j => j.Print), competitors.filter(c => c.Print), { district, date, session });
+      await generateCategoryPDFs(judges.filter(j => j.Print), competitors.filter(c => c.Print), { district, date, session }, paperSize);
     } catch (err) {
       console.error(err);
       alert("Error generating PDFs. Check the browser console for details.");
@@ -77,7 +78,7 @@ export default function App() {
     if (!district || !date) return alert("Please fill in District and Date");
     setIsGenerating(true);
     try {
-      await generateJudgePDFs(judges.filter(j => j.Print), competitors.filter(c => c.Print), { district, date, session });
+      await generateJudgePDFs(judges.filter(j => j.Print), competitors.filter(c => c.Print), { district, date, session }, paperSize);
     } catch (err) {
       console.error(err);
       alert("Error generating PDFs. Check the browser console for details.");
@@ -87,20 +88,19 @@ export default function App() {
 
   const generateLabels = () => {
     if (!district || !date) return alert("Please fill in District and Date");
-    generateFolderLabelsRTF(judges.filter(j => j.Print), { district, date, session });
+    generateFolderLabelsRTF(judges.filter(j => j.Print), { district, date, session }, paperSize);
   };
 
-  // NEW: Generate Overlay RTF
   const generateOverlays = () => {
     if (!district || !date) return alert("Please fill in District and Date");
-    generateOverlaysRTF(judges.filter(j => j.Print), competitors.filter(c => c.Print), { district, date, session });
+    generateOverlaysRTF(judges.filter(j => j.Print), competitors.filter(c => c.Print), { district, date, session }, paperSize);
   };
 
   return (
     <div style={{ padding: '30px', fontFamily: 'system-ui, sans-serif', maxWidth: '1200px', margin: '0 auto', color: '#333' }}>
       <h1 style={{ borderBottom: '2px solid #eee', paddingBottom: '10px' }}>📝 Contest Form Generator</h1>
       
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '15px', margin: '20px 0' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '15px', margin: '20px 0' }}>
         <input style={{ padding: '8px' }} placeholder="District" value={district} onChange={e => setDistrict(e.target.value)} />
         <input style={{ padding: '8px' }} type="date" value={date} onChange={e => setDate(e.target.value)} />
         <select style={{ padding: '8px' }} value={session} onChange={e => setSession(e.target.value)}>
@@ -108,6 +108,10 @@ export default function App() {
           <option>Quartet Semi-Finals</option>
           <option>Chorus Finals</option>
           <option>Quartet Finals</option>
+        </select>
+        <select style={{ padding: '8px' }} value={paperSize} onChange={e => setPaperSize(e.target.value)}>
+          <option value="Letter">Letter (8.5" x 11")</option>
+          <option value="A4">A4 (210mm x 297mm)</option>
         </select>
       </div>
 
@@ -262,12 +266,9 @@ export default function App() {
         <button onClick={generateByJudge} disabled={isGenerating || judges.length === 0} style={{ padding: '12px 24px', background: '#17a2b8', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>
           {isGenerating ? "⏳ Generating..." : "📥 Generate PDFs by Judge"}
         </button>
-        
-        {/* NEW BUTTON FOR OVERLAYS */}
         <button onClick={generateOverlays} disabled={judges.length === 0 || competitors.length === 0} style={{ padding: '12px 24px', background: '#6f42c1', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>
           📄 Generate Overlays (RTF)
         </button>
-
         <button onClick={generateLabels} disabled={judges.length === 0} style={{ padding: '12px 24px', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>
           🏷️ Generate Folder Labels (RTF)
         </button>
