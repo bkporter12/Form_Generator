@@ -27,7 +27,6 @@ export function balanceAndSortJudges(judges) {
   
   categories.forEach(cat => {
     const count = judges.filter(j => j.Category === cat && j.Type === 'Official' && !j.Name.startsWith('Absent')).length;
-    if (count > maxCount) count;
     if (count > maxCount) maxCount = count;
   });
 
@@ -68,10 +67,7 @@ export function balanceAndSortJudges(judges) {
     } else if (j.Type === 'Practice') {
       j.Number = currentPractice++;
     }
-    
-    if (j.Name.startsWith("Absent")) {
-      j.Print = false;
-    }
+    if (j.Name.startsWith("Absent")) j.Print = false;
   });
 
   return balanced;
@@ -84,8 +80,14 @@ async function fetchTemplate(templateName) {
   return await res.arrayBuffer();
 }
 
-async function drawOverlayText(page, font, boldFont, data, isShort, isRotated = false, applyMargin = false) {
+async function drawOverlayText(page, font, boldFont, data, isShort, isRotated = false, applyMargin = false, paperSize = "Letter") {
   const { judge_name, judge_num, comp_name, comp_num, district, session, date, director } = data;
+
+  // A4 vs Letter Coordinate Scaling
+  const PAGE_WIDTH = paperSize === 'A4' ? 595.28 : 612;
+  const PAGE_HEIGHT = paperSize === 'A4' ? 841.89 : 792;
+  const scaleX = PAGE_WIDTH / 612;
+  const scaleY = PAGE_HEIGHT / 792;
 
   const s = 576 / 612; 
   const tx = 18;       
@@ -103,10 +105,15 @@ async function drawOverlayText(page, font, boldFont, data, isShort, isRotated = 
     if (applyMargin) {
       x = (x * s) + tx;
       y = (y * s) + ty;
-      page.drawText(text, { x, y, size: size * s, font: f, color: rgb(0,0,0), rotate: degrees(isRotated ? 180 : 0) });
-    } else {
-      page.drawText(text, { x, y, size: size, font: f, color: rgb(0,0,0), rotate: degrees(isRotated ? 180 : 0) });
+      size = size * s;
     }
+
+    // Scale to selected paper size
+    x = x * scaleX;
+    y = y * scaleY;
+    size = size * Math.min(scaleX, scaleY);
+
+    page.drawText(text, { x, y, size, font: f, color: rgb(0,0,0), rotate: degrees(isRotated ? 180 : 0) });
   };
 
   let nameText = String(judge_name);
@@ -136,7 +143,7 @@ async function drawOverlayText(page, font, boldFont, data, isShort, isRotated = 
 }
 
 // 1. GENERATE BY CATEGORY 
-export async function generateCategoryPDFs(judges, competitors, context) {
+export async function generateCategoryPDFs(judges, competitors, context, paperSize) {
   const zip = new JSZip();
   let filesGenerated = 0;
 
@@ -158,18 +165,43 @@ export async function generateCategoryPDFs(judges, competitors, context) {
           for (let i = 0; i < competitors.length; i += 2) {
             const comp1 = competitors[i];
             const comp2 = competitors[i + 1];
-            const [copiedPage] = await outputDoc.copyPages(await PDFDocument.load(templateBytes), [0]);
-            outputDoc.addPage(copiedPage);
+            
+            const templateDoc = await PDFDocument.load(templateBytes);
+            const [copiedPage] = await outputDoc.copyPages(templateDoc, [0]);
+            
+            let targetPage;
+            if (paperSize === 'A4') {
+              const embedded = await outputDoc.embedPage(copiedPage);
+              targetPage = outputDoc.addPage([595.28, 841.89]);
+              targetPage.drawPage(embedded, { width: 595.28, height: 841.89 });
+            } else {
+              targetPage = copiedPage;
+              outputDoc.addPage(targetPage);
+            }
 
-            await drawOverlayText(copiedPage, helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp1.Name, comp_num: comp1.Number }, true, false, true);
-            if (comp2) await drawOverlayText(copiedPage, helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp2.Name, comp_num: comp2.Number }, true, true, true);
+            await drawOverlayText(targetPage, helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp1.Name, comp_num: comp1.Number }, true, false, true, paperSize);
+            if (comp2) await drawOverlayText(targetPage, helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp2.Name, comp_num: comp2.Number }, true, true, true, paperSize);
           }
         } else {
            for (const comp of competitors) {
               const templateDoc = await PDFDocument.load(templateBytes);
               const copiedPages = await outputDoc.copyPages(templateDoc, templateDoc.getPageIndices());
-              await drawOverlayText(copiedPages[0], helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp.Name, comp_num: comp.Number, director: comp.Director }, false, false, true);
-              copiedPages.forEach(p => outputDoc.addPage(p));
+              
+              let firstTargetPage;
+              for (let idx = 0; idx < copiedPages.length; idx++) {
+                let targetPage;
+                if (paperSize === 'A4') {
+                  const embedded = await outputDoc.embedPage(copiedPages[idx]);
+                  targetPage = outputDoc.addPage([595.28, 841.89]);
+                  targetPage.drawPage(embedded, { width: 595.28, height: 841.89 });
+                } else {
+                  targetPage = copiedPages[idx];
+                  outputDoc.addPage(targetPage);
+                }
+                if (idx === 0) firstTargetPage = targetPage;
+              }
+
+              await drawOverlayText(firstTargetPage, helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp.Name, comp_num: comp.Number, director: comp.Director }, false, false, true, paperSize);
            }
         }
       }
@@ -186,7 +218,7 @@ export async function generateCategoryPDFs(judges, competitors, context) {
 }
 
 // 2. GENERATE BY JUDGE
-export async function generateJudgePDFs(judges, competitors, context) {
+export async function generateJudgePDFs(judges, competitors, context, paperSize) {
   const zip = new JSZip();
   let filesGenerated = 0;
   let singlePdfBytes = null;
@@ -213,8 +245,21 @@ export async function generateJudgePDFs(judges, competitors, context) {
         const templateDoc = await PDFDocument.load(templateBytes);
         const copiedPages = await outputDoc.copyPages(templateDoc, templateDoc.getPageIndices());
         
-        await drawOverlayText(copiedPages[0], helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp.Name, comp_num: comp.Number, director: comp.Director }, false, false, false);
-        copiedPages.forEach(p => outputDoc.addPage(p));
+        let firstTargetPage;
+        for (let idx = 0; idx < copiedPages.length; idx++) {
+          let targetPage;
+          if (paperSize === 'A4') {
+            const embedded = await outputDoc.embedPage(copiedPages[idx]);
+            targetPage = outputDoc.addPage([595.28, 841.89]);
+            targetPage.drawPage(embedded, { width: 595.28, height: 841.89 });
+          } else {
+            targetPage = copiedPages[idx];
+            outputDoc.addPage(targetPage);
+          }
+          if (idx === 0) firstTargetPage = targetPage;
+        }
+        
+        await drawOverlayText(firstTargetPage, helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp.Name, comp_num: comp.Number, director: comp.Director }, false, false, false, paperSize);
         pagesAdded++;
       }
     }
@@ -244,8 +289,10 @@ export async function generateJudgePDFs(judges, competitors, context) {
 const escapeRTF = (text) => String(text || "").replace(/\\/g, '\\\\').replace(/\{/g, '\\{').replace(/\}/g, '\\}');
 
 // 3. GENERATE FOLDER LABELS
-export function generateFolderLabelsRTF(judges, context) {
-  let rtf = `{\\rtf1\\ansi\\deff0\\nouicompat\\viewkind4\\uc1{\\fonttbl{\\f0\\fnil\\fcharset0 Arial;}}{\\colortbl ;\\red0\\green0\\blue0;}\\paperw12240\\paperh15840\\margl225\\margr225\\margt720\\margb720\\pard\\plain\\fs20\n`;
+export function generateFolderLabelsRTF(judges, context, paperSize) {
+  const pw = paperSize === 'A4' ? 11906 : 12240;
+  const ph = paperSize === 'A4' ? 16838 : 15840;
+  let rtf = `{\\rtf1\\ansi\\deff0\\nouicompat\\viewkind4\\uc1{\\fonttbl{\\f0\\fnil\\fcharset0 Arial;}}{\\colortbl ;\\red0\\green0\\blue0;}\\paperw${pw}\\paperh${ph}\\margl225\\margr225\\margt720\\margb720\\pard\\plain\\fs20\n`;
   const activeJudges = judges.filter(j => !j.Name.startsWith("Absent"));
 
   for (let i = 0; i < activeJudges.length; i += 2) {
@@ -277,10 +324,11 @@ export function generateFolderLabelsRTF(judges, context) {
   saveAs(blob, `${context.session.replace(/[^a-z0-9]/gi, '_')}_Folder_Labels.rtf`);
 }
 
-// 4. GENERATE OVERLAYS ONLY (NEW)
-export function generateOverlaysRTF(judges, competitors, context) {
-  // Sets exact page margins to match the PDF coordinates (540 twips = 0.375" top, 1000 twips = ~0.69" sides)
-  let rtf = `{\\rtf1\\ansi\\deff0\\nouicompat\\viewkind4\\uc1{\\fonttbl{\\f0\\fnil\\fcharset0 Arial;}}{\\colortbl ;\\red0\\green0\\blue0;}\\paperw12240\\paperh15840\\margl1000\\margr1000\\margt540\\margb1000\n`;
+// 4. GENERATE OVERLAYS ONLY 
+export function generateOverlaysRTF(judges, competitors, context, paperSize) {
+  const pw = paperSize === 'A4' ? 11906 : 12240;
+  const ph = paperSize === 'A4' ? 16838 : 15840;
+  let rtf = `{\\rtf1\\ansi\\deff0\\nouicompat\\viewkind4\\uc1{\\fonttbl{\\f0\\fnil\\fcharset0 Arial;}}{\\colortbl ;\\red0\\green0\\blue0;}\\paperw${pw}\\paperh${ph}\\margl1000\\margr1000\\margt540\\margb1000\n`;
   
   const activeJudges = judges.filter(j => !j.Name.startsWith("Absent"));
 
@@ -288,21 +336,15 @@ export function generateOverlaysRTF(judges, competitors, context) {
     for (const comp of competitors) {
       const judgeText = judge.Number ? `${judge.Number}. ${judge.Name}` : judge.Name;
       
-      // Judge Info (Top Right - 16pt Bold)
       rtf += `\\pard\\qr\\sa100\\b\\f0\\fs32 ${escapeRTF(judgeText)}\\b0\\par\n`;
-      
-      // Competitor Info (Left Aligned - 12pt)
       rtf += `\\pard\\ql\\sa100\\fs24 ${escapeRTF(comp.Number + ". " + comp.Name)}\\par\n`;
       
       if (context.session.includes("Chorus") && comp.Director) {
         rtf += `\\pard\\ql\\sa100\\fs24 ${escapeRTF(comp.Director)}\\par\n`;
       }
       
-      // Contest Info (Center Aligned - 10pt)
       const contestText = `${context.district} - ${context.session}, ${context.date}`;
       rtf += `\\pard\\qc\\fs20 ${escapeRTF(contestText)}\\par\n`;
-      
-      // Hard page break
       rtf += `\\page\n`;
     }
   }
