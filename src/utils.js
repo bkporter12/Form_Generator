@@ -59,7 +59,7 @@ export function balanceAndSortJudges(judges) {
   });
 
   let currentOfficial = 1;
-  let currentPractice = 50; // Changed back to 50
+  let currentPractice = 51; // Reverted back to 51!
 
   balanced.forEach(j => {
     if (j.Type === 'Official') {
