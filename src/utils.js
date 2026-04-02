@@ -142,13 +142,11 @@ async function drawOverlayText(page, font, boldFont, data, isShort, isRotated = 
       let line1 = director;
       let line2 = "";
       
-      // If there are 3 or more names separated by commas, split them
       if (parts.length >= 3) {
         line1 = parts.slice(0, 2).join(', ');
         line2 = parts.slice(2).join(', ');
       }
       
-      // Draw line 1 slightly lower, and line 2 below it at 10pt font
       drawText(line1, LAYOUT.margin_left, LAYOUT.comp_y - 12, 10, font);
       if (line2) {
         drawText(line2, LAYOUT.margin_left, LAYOUT.comp_y - 24, 10, font);
@@ -158,7 +156,13 @@ async function drawOverlayText(page, font, boldFont, data, isShort, isRotated = 
 
   const contestText = `${district} - ${session}, ${date}`;
   const contestWidth = font.widthOfTextAtSize(contestText, 10);
-  drawText(contestText, LAYOUT.page_center - (contestWidth / 2), LAYOUT.contest_y, 10, font);
+  
+  // Right-align Contest Text on Long Forms, keep centered on Short Forms
+  if (isShort) {
+    drawText(contestText, LAYOUT.page_center - (contestWidth / 2), LAYOUT.contest_y, 10, font);
+  } else {
+    drawText(contestText, LAYOUT.margin_right - contestWidth, LAYOUT.contest_y, 10, font);
+  }
 }
 
 // 1. GENERATE BY CATEGORY 
@@ -358,7 +362,6 @@ export function generateOverlaysRTF(judges, competitors, context, paperSize) {
       rtf += `\\pard\\qr\\sa100\\b\\f0\\fs32 ${escapeRTF(judgeText)}\\b0\\par\n`;
       rtf += `\\pard\\ql\\sa100\\fs24 ${escapeRTF(comp.Number + ". " + comp.Name)}\\par\n`;
       
-      // Director / Quartet Member Logic for RTF
       if (comp.Director) {
         if (context.session.includes("Chorus")) {
           rtf += `\\pard\\ql\\sa100\\fs24 ${escapeRTF(comp.Director)}\\par\n`;
@@ -378,7 +381,8 @@ export function generateOverlaysRTF(judges, competitors, context, paperSize) {
       }
       
       const contestText = `${context.district} - ${context.session}, ${context.date}`;
-      rtf += `\\pard\\qc\\fs20 ${escapeRTF(contestText)}\\par\n`;
+      // Use \qr here to right-align the contest details on the RTF overlays too
+      rtf += `\\pard\\qr\\fs20 ${escapeRTF(contestText)}\\par\n`;
       rtf += `\\page\n`;
     }
   }
