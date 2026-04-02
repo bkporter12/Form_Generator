@@ -243,15 +243,14 @@ export default function App() {
                   style={{ flex: 1, padding: '4px' }}
                   placeholder="Competitor Name"
                 />
-                {session.includes("Chorus") && (
-                  <input 
-                    type="text" 
-                    value={c.Director || ""} 
-                    onChange={e => updateComp(i, 'Director', e.target.value)} 
-                    style={{ flex: 1, padding: '4px' }}
-                    placeholder="Director Name"
-                  />
-                )}
+                {/* UNCONDITIONAL RENDER - Placeholder changes dynamically */}
+                <input 
+                  type="text" 
+                  value={c.Director || ""} 
+                  onChange={e => updateComp(i, 'Director', e.target.value)} 
+                  style={{ flex: 1, padding: '4px' }}
+                  placeholder={session.includes("Chorus") ? "Director Name" : "Members (comma separated)"}
+                />
                 <button onClick={() => removeComp(i)} style={{ padding: '4px 8px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>🗑️</button>
               </div>
             ))}
