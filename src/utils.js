@@ -59,7 +59,7 @@ export function balanceAndSortJudges(judges) {
   });
 
   let currentOfficial = 1;
-  let currentPractice = 51; 
+  let currentPractice = 50; // Changed back to 50
 
   balanced.forEach(j => {
     if (j.Type === 'Official') {
@@ -381,7 +381,6 @@ export function generateOverlaysRTF(judges, competitors, context, paperSize) {
       }
       
       const contestText = `${context.district} - ${context.session}, ${context.date}`;
-      // Use \qr here to right-align the contest details on the RTF overlays too
       rtf += `\\pard\\qr\\fs20 ${escapeRTF(contestText)}\\par\n`;
       rtf += `\\page\n`;
     }
