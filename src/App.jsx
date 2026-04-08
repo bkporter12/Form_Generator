@@ -12,6 +12,9 @@ export default function App() {
   const [competitors, setCompetitors] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
 
+  const selectedJudges = judges.filter(j => j.Print);
+  const selectedCompetitors = competitors.filter(c => c.Print);
+
   // --- PARSE UPLOADS ---
   const handleJudgeUpload = (e) => {
     if (!e.target.files.length) return;
@@ -64,9 +67,11 @@ export default function App() {
   // --- GENERATION ACTIONS ---
   const generateByCategory = async () => {
     if (!district || !date) return alert("Please fill in District and Date");
+    if (selectedJudges.length === 0) return alert("Please select at least one Judge to print.");
+    if (selectedCompetitors.length === 0) return alert("Please select at least one Competitor to print.");
     setIsGenerating(true);
     try {
-      await generateCategoryPDFs(judges.filter(j => j.Print), competitors.filter(c => c.Print), { district, date, session }, paperSize);
+      await generateCategoryPDFs(selectedJudges, selectedCompetitors, { district, date, session }, paperSize);
     } catch (err) {
       console.error(err);
       alert("Error generating PDFs. Check the browser console for details.");
@@ -76,9 +81,11 @@ export default function App() {
 
   const generateByJudge = async () => {
     if (!district || !date) return alert("Please fill in District and Date");
+    if (selectedJudges.length === 0) return alert("Please select at least one Judge to print.");
+    if (selectedCompetitors.length === 0) return alert("Please select at least one Competitor to print.");
     setIsGenerating(true);
     try {
-      await generateJudgePDFs(judges.filter(j => j.Print), competitors.filter(c => c.Print), { district, date, session }, paperSize);
+      await generateJudgePDFs(selectedJudges, selectedCompetitors, { district, date, session }, paperSize);
     } catch (err) {
       console.error(err);
       alert("Error generating PDFs. Check the browser console for details.");
@@ -88,12 +95,15 @@ export default function App() {
 
   const generateLabels = () => {
     if (!district || !date) return alert("Please fill in District and Date");
-    generateFolderLabelsRTF(judges.filter(j => j.Print), { district, date, session }, paperSize);
+    if (selectedJudges.length === 0) return alert("Please select at least one Judge to print.");
+    generateFolderLabelsRTF(selectedJudges, { district, date, session }, paperSize);
   };
 
   const generateOverlays = () => {
     if (!district || !date) return alert("Please fill in District and Date");
-    generateOverlaysRTF(judges.filter(j => j.Print), competitors.filter(c => c.Print), { district, date, session }, paperSize);
+    if (selectedJudges.length === 0) return alert("Please select at least one Judge to print.");
+    if (selectedCompetitors.length === 0) return alert("Please select at least one Competitor to print.");
+    generateOverlaysRTF(selectedJudges, selectedCompetitors, { district, date, session }, paperSize);
   };
 
   return (
@@ -259,10 +269,10 @@ export default function App() {
       </div>
 
       <div style={{ marginTop: '30px', display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-        <button onClick={generateByCategory} disabled={isGenerating || judges.length === 0} style={{ padding: '12px 24px', background: '#0066cc', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>
+        <button onClick={generateByCategory} disabled={isGenerating || judges.length === 0 || competitors.length === 0} style={{ padding: '12px 24px', background: '#0066cc', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>
           {isGenerating ? "⏳ Generating..." : "📥 Generate PDFs by Category"}
         </button>
-        <button onClick={generateByJudge} disabled={isGenerating || judges.length === 0} style={{ padding: '12px 24px', background: '#17a2b8', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>
+        <button onClick={generateByJudge} disabled={isGenerating || judges.length === 0 || competitors.length === 0} style={{ padding: '12px 24px', background: '#17a2b8', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>
           {isGenerating ? "⏳ Generating..." : "📥 Generate PDFs by Judge"}
         </button>
         <button onClick={generateOverlays} disabled={judges.length === 0 || competitors.length === 0} style={{ padding: '12px 24px', background: '#6f42c1', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>
