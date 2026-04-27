@@ -24,7 +24,25 @@ const CAT_FULL_NAMES = { MUS: "Musicality", PER: "Performance", SNG: "Singing" }
 export function balanceAndSortJudges(judges) {
   const categories = ['MUS', 'PER', 'SNG'];
   let maxCount = 0;
+ // Helper to find the first capitalized word after the first name
+function getLastNameSortKey(fullName) {
+  const name = fullName || "";
+  const parts = name.trim().split(/\s+/);
   
+  // If only one name is provided, just use that
+  if (parts.length <= 1) return name.toUpperCase();
+  
+  // Skip the first name (index 0) and look for the first capitalized word
+  for (let i = 1; i < parts.length; i++) {
+    if (/^[A-Z]/.test(parts[i])) {
+      return parts.slice(i).join(' ').toUpperCase();
+    }
+  }
+  
+  // Fallback if no capitalized words are found after the first name
+  return parts[parts.length - 1].toUpperCase();
+}
+ 
   categories.forEach(cat => {
     const count = judges.filter(j => j.Category === cat && j.Type === 'Official' && !j.Name.startsWith('Absent')).length;
     if (count > maxCount) maxCount = count;
@@ -53,13 +71,14 @@ export function balanceAndSortJudges(judges) {
     if (isAbsentA && !isAbsentB) return 1;
     if (!isAbsentA && isAbsentB) return -1;
     
-    const lastA = (a.Name || "").trim().split(' ').pop();
-    const lastB = (b.Name || "").trim().split(' ').pop();
+    // Apply the multi-word last name sorting logic
+    const lastA = getLastNameSortKey(a.Name);
+    const lastB = getLastNameSortKey(b.Name);
     return lastA.localeCompare(lastB);
   });
 
   let currentOfficial = 1;
-  let currentPractice = 51; // Reverted back to 51!
+  let currentPractice = 51;
 
   balanced.forEach(j => {
     if (j.Type === 'Official') {
@@ -361,10 +380,12 @@ export function generateOverlaysRTF(judges, competitors, context, paperSize) {
       
       rtf += `\\pard\\qr\\sa100\\b\\f0\\fs32 ${escapeRTF(judgeText)}\\b0\\par\n`;
       rtf += `\\pard\\ql\\sa100\\fs24 ${escapeRTF(comp.Number + ". " + comp.Name)}\\par\n`;
-      
+
+      let extraLines = 0;
       if (comp.Director) {
         if (context.session.includes("Chorus")) {
           rtf += `\\pard\\ql\\sa100\\fs24 ${escapeRTF(comp.Director)}\\par\n`;
+          extraLines = 1;
         } else if (context.session.includes("Quartet")) {
           const parts = comp.Director.split(',').map(s => s.trim()).filter(s => s);
           let line1 = comp.Director;
@@ -374,10 +395,18 @@ export function generateOverlaysRTF(judges, competitors, context, paperSize) {
             line2 = parts.slice(2).join(', ');
           }
           rtf += `\\pard\\ql\\sa100\\fs20 ${escapeRTF(line1)}\\par\n`;
+          extraLines = 1;
           if (line2) {
             rtf += `\\pard\\ql\\sa100\\fs20 ${escapeRTF(line2)}\\par\n`;
+            extraLines = 2;
           }
         }
+      }
+
+      // Automatically pad with invisible blank lines so the contest text below never shifts
+      while (extraLines < 2) {
+        rtf += `\\pard\\ql\\sa100\\fs20 \\par\n`;
+        extraLines++;
       }
       
       const contestText = `${context.district} - ${context.session}, ${context.date}`;
@@ -389,4 +418,4 @@ export function generateOverlaysRTF(judges, competitors, context, paperSize) {
   rtf += "}";
   const blob = new Blob([rtf], { type: "application/rtf" });
   saveAs(blob, `${context.session.replace(/[^a-z0-9]/gi, '_')}_Text_Overlays.rtf`);
-}
+}          
