@@ -61,12 +61,10 @@ export default function App() {
   const removeComp = (index) => setCompetitors(competitors.filter((_, i) => i !== index));
   const clearComps = () => setCompetitors([]);
   
-  // NEW: Clear all Order of Appearance numbers
   const clearAllOAs = () => {
     setCompetitors(competitors.map(c => ({ ...c, Number: "" })));
   };
 
-  // UPDATED: Sort Competitors by OA (Pushes blanks to the bottom)
   const sortCompsByOA = () => {
     const sorted = [...competitors].sort((a, b) => {
       const numA = a.Number ? parseInt(a.Number) : Infinity;
@@ -80,9 +78,16 @@ export default function App() {
   // --- GENERATION ACTIONS ---
   const generateByCategory = async () => {
     if (!district || !date) return alert("Please fill in District and Date");
+    
+    const activeJudges = judges.filter(j => j.Print);
+    const activeComps = competitors.filter(c => c.Print);
+    
+    if (activeJudges.length === 0) return alert("Please select at least one Judge to print");
+    if (activeComps.length === 0) return alert("Please select at least one Competitor to print");
+
     setIsGenerating(true);
     try {
-      await generateCategoryPDFs(judges.filter(j => j.Print), competitors.filter(c => c.Print), { district, date, session }, paperSize);
+      await generateCategoryPDFs(activeJudges, activeComps, { district, date, session }, paperSize);
     } catch (err) {
       console.error(err);
       alert("Error generating PDFs. Check the browser console for details.");
@@ -92,9 +97,16 @@ export default function App() {
 
   const generateByJudge = async () => {
     if (!district || !date) return alert("Please fill in District and Date");
+    
+    const activeJudges = judges.filter(j => j.Print);
+    const activeComps = competitors.filter(c => c.Print);
+    
+    if (activeJudges.length === 0) return alert("Please select at least one Judge to print");
+    if (activeComps.length === 0) return alert("Please select at least one Competitor to print");
+
     setIsGenerating(true);
     try {
-      await generateJudgePDFs(judges.filter(j => j.Print), competitors.filter(c => c.Print), { district, date, session }, paperSize);
+      await generateJudgePDFs(activeJudges, activeComps, { district, date, session }, paperSize);
     } catch (err) {
       console.error(err);
       alert("Error generating PDFs. Check the browser console for details.");
@@ -102,14 +114,25 @@ export default function App() {
     setIsGenerating(false);
   };
 
-  const generateLabels = () => {
-    if (!district || !date) return alert("Please fill in District and Date");
-    generateFolderLabelsRTF(judges.filter(j => j.Print), { district, date, session }, paperSize);
-  };
-
   const generateOverlays = () => {
     if (!district || !date) return alert("Please fill in District and Date");
-    generateOverlaysRTF(judges.filter(j => j.Print), competitors.filter(c => c.Print), { district, date, session }, paperSize);
+    
+    const activeJudges = judges.filter(j => j.Print);
+    const activeComps = competitors.filter(c => c.Print);
+    
+    if (activeJudges.length === 0) return alert("Please select at least one Judge to print");
+    if (activeComps.length === 0) return alert("Please select at least one Competitor to print");
+
+    generateOverlaysRTF(activeJudges, activeComps, { district, date, session }, paperSize);
+  };
+
+  const generateLabels = () => {
+    if (!district || !date) return alert("Please fill in District and Date");
+    
+    const activeJudges = judges.filter(j => j.Print);
+    if (activeJudges.length === 0) return alert("Please select at least one Judge to print");
+
+    generateFolderLabelsRTF(activeJudges, { district, date, session }, paperSize);
   };
 
   return (
