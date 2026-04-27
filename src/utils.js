@@ -21,28 +21,27 @@ const FORMAT_MAPPING = {
 const CAT_FULL_NAMES = { MUS: "Musicality", PER: "Performance", SNG: "Singing" };
 
 // --- DATA PROCESSING ---
-export function balanceAndSortJudges(judges) {
-  const categories = ['MUS', 'PER', 'SNG'];
-  let maxCount = 0;
- // Helper to find the first capitalized word after the first name
+
+// Helper to find the first capitalized word after the first name
 function getLastNameSortKey(fullName) {
   const name = fullName || "";
   const parts = name.trim().split(/\s+/);
   
-  // If only one name is provided, just use that
   if (parts.length <= 1) return name.toUpperCase();
   
-  // Skip the first name (index 0) and look for the first capitalized word
   for (let i = 1; i < parts.length; i++) {
     if (/^[A-Z]/.test(parts[i])) {
       return parts.slice(i).join(' ').toUpperCase();
     }
   }
   
-  // Fallback if no capitalized words are found after the first name
   return parts[parts.length - 1].toUpperCase();
 }
- 
+
+export function balanceAndSortJudges(judges) {
+  const categories = ['MUS', 'PER', 'SNG'];
+  let maxCount = 0;
+  
   categories.forEach(cat => {
     const count = judges.filter(j => j.Category === cat && j.Type === 'Official' && !j.Name.startsWith('Absent')).length;
     if (count > maxCount) maxCount = count;
@@ -71,14 +70,13 @@ function getLastNameSortKey(fullName) {
     if (isAbsentA && !isAbsentB) return 1;
     if (!isAbsentA && isAbsentB) return -1;
     
-    // Apply the multi-word last name sorting logic
     const lastA = getLastNameSortKey(a.Name);
     const lastB = getLastNameSortKey(b.Name);
     return lastA.localeCompare(lastB);
   });
 
   let currentOfficial = 1;
-  let currentPractice = 51;
+  let currentPractice = 51; 
 
   balanced.forEach(j => {
     if (j.Type === 'Official') {
@@ -102,7 +100,6 @@ async function fetchTemplate(templateName) {
 async function drawOverlayText(page, font, boldFont, data, isShort, isRotated = false, applyMargin = false, paperSize = "Letter") {
   const { judge_name, judge_num, comp_name, comp_num, district, session, date, director } = data;
 
-  // A4 vs Letter Coordinate Scaling
   const PAGE_WIDTH = paperSize === 'A4' ? 595.28 : 612;
   const PAGE_HEIGHT = paperSize === 'A4' ? 841.89 : 792;
   const scaleX = PAGE_WIDTH / 612;
@@ -127,7 +124,6 @@ async function drawOverlayText(page, font, boldFont, data, isShort, isRotated = 
       size = size * s;
     }
 
-    // Scale to selected paper size
     x = x * scaleX;
     y = y * scaleY;
     size = size * Math.min(scaleX, scaleY);
@@ -152,7 +148,6 @@ async function drawOverlayText(page, font, boldFont, data, isShort, isRotated = 
 
   drawText(`${comp_num}. ${comp_name}`, LAYOUT.margin_left, LAYOUT.comp_y, 12, font);
 
-  // Director / Quartet Member Logic
   if (!isShort && director) {
     if (session.includes("Chorus")) {
       drawText(director, LAYOUT.margin_left, LAYOUT.comp_y - 14, 12, font);
@@ -176,7 +171,6 @@ async function drawOverlayText(page, font, boldFont, data, isShort, isRotated = 
   const contestText = `${district} - ${session}, ${date}`;
   const contestWidth = font.widthOfTextAtSize(contestText, 10);
   
-  // Right-align Contest Text on Long Forms, keep centered on Short Forms
   if (isShort) {
     drawText(contestText, LAYOUT.page_center - (contestWidth / 2), LAYOUT.contest_y, 10, font);
   } else {
@@ -370,6 +364,11 @@ export function generateFolderLabelsRTF(judges, context, paperSize) {
 export function generateOverlaysRTF(judges, competitors, context, paperSize) {
   const pw = paperSize === 'A4' ? 11906 : 12240;
   const ph = paperSize === 'A4' ? 16838 : 15840;
+  
+  // Calculate exact tab stop placements based on the paper width and 1-inch (1000 twip) margins
+  const centerTab = Math.round((pw - 2000) / 2);
+  const rightTab = pw - 2000;
+  
   let rtf = `{\\rtf1\\ansi\\deff0\\nouicompat\\viewkind4\\uc1{\\fonttbl{\\f0\\fnil\\fcharset0 Arial;}}{\\colortbl ;\\red0\\green0\\blue0;}\\paperw${pw}\\paperh${ph}\\margl1000\\margr1000\\margt540\\margb1000\n`;
   
   const activeJudges = judges.filter(j => !j.Name.startsWith("Absent"));
@@ -377,15 +376,17 @@ export function generateOverlaysRTF(judges, competitors, context, paperSize) {
   for (const judge of activeJudges) {
     for (const comp of competitors) {
       const judgeText = judge.Number ? `${judge.Number}. ${judge.Name}` : judge.Name;
+      const contestText = `${context.district} - ${context.session}, ${context.date}`;
       
-      rtf += `\\pard\\qr\\sa100\\b\\f0\\fs32 ${escapeRTF(judgeText)}\\b0\\par\n`;
+      // Top Line: Center Tab (Contest Info 10pt) + Right Tab (Judge Info 16pt Bold)
+      rtf += `\\pard\\tqc\\tx${centerTab}\\tqr\\tx${rightTab}\\sa100 \\tab \\f0\\fs20 ${escapeRTF(contestText)} \\tab \\b\\fs32 ${escapeRTF(judgeText)}\\b0\\par\n`;
+      
+      // Left Line: Competitor Info 12pt
       rtf += `\\pard\\ql\\sa100\\fs24 ${escapeRTF(comp.Number + ". " + comp.Name)}\\par\n`;
-
-      let extraLines = 0;
+      
       if (comp.Director) {
         if (context.session.includes("Chorus")) {
           rtf += `\\pard\\ql\\sa100\\fs24 ${escapeRTF(comp.Director)}\\par\n`;
-          extraLines = 1;
         } else if (context.session.includes("Quartet")) {
           const parts = comp.Director.split(',').map(s => s.trim()).filter(s => s);
           let line1 = comp.Director;
@@ -395,22 +396,12 @@ export function generateOverlaysRTF(judges, competitors, context, paperSize) {
             line2 = parts.slice(2).join(', ');
           }
           rtf += `\\pard\\ql\\sa100\\fs20 ${escapeRTF(line1)}\\par\n`;
-          extraLines = 1;
           if (line2) {
             rtf += `\\pard\\ql\\sa100\\fs20 ${escapeRTF(line2)}\\par\n`;
-            extraLines = 2;
           }
         }
       }
-
-      // Automatically pad with invisible blank lines so the contest text below never shifts
-      while (extraLines < 2) {
-        rtf += `\\pard\\ql\\sa100\\fs20 \\par\n`;
-        extraLines++;
-      }
       
-      const contestText = `${context.district} - ${context.session}, ${context.date}`;
-      rtf += `\\pard\\qr\\fs20 ${escapeRTF(contestText)}\\par\n`;
       rtf += `\\page\n`;
     }
   }
@@ -418,4 +409,4 @@ export function generateOverlaysRTF(judges, competitors, context, paperSize) {
   rtf += "}";
   const blob = new Blob([rtf], { type: "application/rtf" });
   saveAs(blob, `${context.session.replace(/[^a-z0-9]/gi, '_')}_Text_Overlays.rtf`);
-}          
+}
