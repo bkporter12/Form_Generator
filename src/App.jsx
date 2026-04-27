@@ -12,9 +12,6 @@ export default function App() {
   const [competitors, setCompetitors] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  const selectedJudges = judges.filter(j => j.Print);
-  const selectedCompetitors = competitors.filter(c => c.Print);
-
   // --- PARSE UPLOADS ---
   const handleJudgeUpload = (e) => {
     if (!e.target.files.length) return;
@@ -63,15 +60,29 @@ export default function App() {
   const addComp = () => setCompetitors([...competitors, { Number: "", Name: "", Director: "", Print: true }]);
   const removeComp = (index) => setCompetitors(competitors.filter((_, i) => i !== index));
   const clearComps = () => setCompetitors([]);
+  
+  // NEW: Clear all Order of Appearance numbers
+  const clearAllOAs = () => {
+    setCompetitors(competitors.map(c => ({ ...c, Number: "" })));
+  };
+
+  // UPDATED: Sort Competitors by OA (Pushes blanks to the bottom)
+  const sortCompsByOA = () => {
+    const sorted = [...competitors].sort((a, b) => {
+      const numA = a.Number ? parseInt(a.Number) : Infinity;
+      const numB = b.Number ? parseInt(b.Number) : Infinity;
+      if (numA !== numB) return numA - numB;
+      return (a.Name || "").localeCompare(b.Name || "");
+    });
+    setCompetitors(sorted);
+  };
 
   // --- GENERATION ACTIONS ---
   const generateByCategory = async () => {
     if (!district || !date) return alert("Please fill in District and Date");
-    if (selectedJudges.length === 0) return alert("Please select at least one Judge to print.");
-    if (selectedCompetitors.length === 0) return alert("Please select at least one Competitor to print.");
     setIsGenerating(true);
     try {
-      await generateCategoryPDFs(selectedJudges, selectedCompetitors, { district, date, session }, paperSize);
+      await generateCategoryPDFs(judges.filter(j => j.Print), competitors.filter(c => c.Print), { district, date, session }, paperSize);
     } catch (err) {
       console.error(err);
       alert("Error generating PDFs. Check the browser console for details.");
@@ -81,11 +92,9 @@ export default function App() {
 
   const generateByJudge = async () => {
     if (!district || !date) return alert("Please fill in District and Date");
-    if (selectedJudges.length === 0) return alert("Please select at least one Judge to print.");
-    if (selectedCompetitors.length === 0) return alert("Please select at least one Competitor to print.");
     setIsGenerating(true);
     try {
-      await generateJudgePDFs(selectedJudges, selectedCompetitors, { district, date, session }, paperSize);
+      await generateJudgePDFs(judges.filter(j => j.Print), competitors.filter(c => c.Print), { district, date, session }, paperSize);
     } catch (err) {
       console.error(err);
       alert("Error generating PDFs. Check the browser console for details.");
@@ -95,15 +104,12 @@ export default function App() {
 
   const generateLabels = () => {
     if (!district || !date) return alert("Please fill in District and Date");
-    if (selectedJudges.length === 0) return alert("Please select at least one Judge to print.");
-    generateFolderLabelsRTF(selectedJudges, { district, date, session }, paperSize);
+    generateFolderLabelsRTF(judges.filter(j => j.Print), { district, date, session }, paperSize);
   };
 
   const generateOverlays = () => {
     if (!district || !date) return alert("Please fill in District and Date");
-    if (selectedJudges.length === 0) return alert("Please select at least one Judge to print.");
-    if (selectedCompetitors.length === 0) return alert("Please select at least one Competitor to print.");
-    generateOverlaysRTF(selectedJudges, selectedCompetitors, { district, date, session }, paperSize);
+    generateOverlaysRTF(judges.filter(j => j.Print), competitors.filter(c => c.Print), { district, date, session }, paperSize);
   };
 
   return (
@@ -202,7 +208,9 @@ export default function App() {
         <div style={{ flex: 1, background: '#f9f9f9', padding: '20px', borderRadius: '8px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
             <h3 style={{ margin: 0 }}>🎤 Competitors</h3>
-            <div style={{ display: 'flex', gap: '5px' }}>
+            <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <button onClick={clearAllOAs} style={{ padding: '4px 8px', cursor: 'pointer', background: '#ffc107', border: 'none', borderRadius: '4px' }} title="Clear all Order of Appearance numbers">🚫 Clear OAs</button>
+              <button onClick={sortCompsByOA} style={{ padding: '4px 8px', cursor: 'pointer' }} title="Sort by Order of Appearance">🔄 Sort OA</button>
               <button onClick={addComp} style={{ padding: '4px 8px', cursor: 'pointer' }}>➕ Add</button>
               <button onClick={clearComps} style={{ padding: '4px 8px', cursor: 'pointer', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px' }}>🗑️ Clear</button>
             </div>
@@ -253,7 +261,6 @@ export default function App() {
                   style={{ flex: 1, padding: '4px' }}
                   placeholder="Competitor Name"
                 />
-                {/* UNCONDITIONAL RENDER - Placeholder changes dynamically */}
                 <input 
                   type="text" 
                   value={c.Director || ""} 
@@ -269,10 +276,10 @@ export default function App() {
       </div>
 
       <div style={{ marginTop: '30px', display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-        <button onClick={generateByCategory} disabled={isGenerating || judges.length === 0 || competitors.length === 0} style={{ padding: '12px 24px', background: '#0066cc', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>
+        <button onClick={generateByCategory} disabled={isGenerating || judges.length === 0} style={{ padding: '12px 24px', background: '#0066cc', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>
           {isGenerating ? "⏳ Generating..." : "📥 Generate PDFs by Category"}
         </button>
-        <button onClick={generateByJudge} disabled={isGenerating || judges.length === 0 || competitors.length === 0} style={{ padding: '12px 24px', background: '#17a2b8', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>
+        <button onClick={generateByJudge} disabled={isGenerating || judges.length === 0} style={{ padding: '12px 24px', background: '#17a2b8', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>
           {isGenerating ? "⏳ Generating..." : "📥 Generate PDFs by Judge"}
         </button>
         <button onClick={generateOverlays} disabled={judges.length === 0 || competitors.length === 0} style={{ padding: '12px 24px', background: '#6f42c1', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>
