@@ -253,12 +253,10 @@ export async function generateCategoryPDFs(judges, competitors, context, paperSi
   }
 }
 
-// 2. GENERATE BY JUDGE
+// 2. GENERATE BY JUDGE (Now includes Competitor TXT File)
 export async function generateJudgePDFs(judges, competitors, context, paperSize) {
   const zip = new JSZip();
   let filesGenerated = 0;
-  let singlePdfBytes = null;
-  let singlePdfName = "";
 
   for (const judge of judges) {
     if (judge.Name.startsWith("Absent")) continue;
@@ -306,16 +304,38 @@ export async function generateJudgePDFs(judges, competitors, context, paperSize)
       const fname = `${context.session.replace(/[^a-z0-9]/gi, '_')}_${safeJudge}_${context.date.replace(/\//g, "-")}.pdf`;
       zip.file(fname, pdfBytes);
       filesGenerated++;
-      
-      singlePdfBytes = pdfBytes;
-      singlePdfName = fname;
     }
   }
 
-  if (filesGenerated === 1) {
-    const blob = new Blob([singlePdfBytes], { type: "application/pdf" });
-    saveAs(blob, singlePdfName);
-  } else if (filesGenerated > 1) {
+  // If we successfully generated any PDFs, build and attach the text file
+  if (filesGenerated > 0) {
+    
+    // Sort competitors explicitly for the text file
+    const sortedComps = [...competitors].sort((a, b) => {
+      const numA = a.Number ? parseInt(a.Number) : Infinity;
+      const numB = b.Number ? parseInt(b.Number) : Infinity;
+      if (numA !== numB) return numA - numB;
+      return (a.Name || "").localeCompare(b.Name || "");
+    });
+
+    // Build the text layout
+    let txt = `${context.district} - ${context.session}\n${context.date}\n\n`;
+    txt += `Order of Appearance:\n`;
+    txt += `--------------------\n`;
+    
+    sortedComps.forEach(comp => {
+      const oa = comp.Number || "TBD";
+      let line = `${oa}. ${comp.Name}`;
+      if (comp.Director) {
+        line += ` (${comp.Director})`;
+      }
+      txt += line + `\n`;
+    });
+
+    // Add the text file to the zip
+    zip.file(`${context.session.replace(/[^a-z0-9]/gi, '_')}_Competitor_List.txt`, txt);
+
+    // Save the combined ZIP file
     const zipBlob = await zip.generateAsync({ type: "blob" });
     saveAs(zipBlob, `${context.session.replace(/[^a-z0-9]/gi, '_')}_Judge_Packets.zip`);
   }
@@ -365,7 +385,6 @@ export function generateOverlaysRTF(judges, competitors, context, paperSize) {
   const pw = paperSize === 'A4' ? 11906 : 12240;
   const ph = paperSize === 'A4' ? 16838 : 15840;
   
-  // Calculate exact tab stop placements based on the paper width and 1-inch (1000 twip) margins
   const centerTab = Math.round((pw - 2000) / 2);
   const rightTab = pw - 2000;
   
@@ -378,10 +397,7 @@ export function generateOverlaysRTF(judges, competitors, context, paperSize) {
       const judgeText = judge.Number ? `${judge.Number}. ${judge.Name}` : judge.Name;
       const contestText = `${context.district} - ${context.session}, ${context.date}`;
       
-      // Top Line: Center Tab (Contest Info 10pt) + Right Tab (Judge Info 16pt Bold)
       rtf += `\\pard\\tqc\\tx${centerTab}\\tqr\\tx${rightTab}\\sa100 \\tab \\f0\\fs20 ${escapeRTF(contestText)} \\tab \\b\\fs32 ${escapeRTF(judgeText)}\\b0\\par\n`;
-      
-      // Left Line: Competitor Info 12pt
       rtf += `\\pard\\ql\\sa100\\fs24 ${escapeRTF(comp.Number + ". " + comp.Name)}\\par\n`;
       
       if (comp.Director) {
