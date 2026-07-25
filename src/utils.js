@@ -253,7 +253,7 @@ export async function generateCategoryPDFs(judges, competitors, context, paperSi
   }
 }
 
-// 2. GENERATE BY JUDGE (Now includes Competitor TXT File)
+// 2. GENERATE BY JUDGE 
 export async function generateJudgePDFs(judges, competitors, context, paperSize) {
   const zip = new JSZip();
   let filesGenerated = 0;
@@ -380,14 +380,12 @@ export function generateFolderLabelsRTF(judges, context, paperSize) {
   saveAs(blob, `${context.session.replace(/[^a-z0-9]/gi, '_')}_Folder_Labels.rtf`);
 }
 
-// 4. GENERATE OVERLAYS ONLY 
+// 4. GENERATE OVERLAYS ONLY (RTF)
 export function generateOverlaysRTF(judges, competitors, context, paperSize) {
   const pw = paperSize === 'A4' ? 11906 : 12240;
   const ph = paperSize === 'A4' ? 16838 : 15840;
   
-  const centerTab = Math.round((pw - 2000) / 2);
-  const rightTab = pw - 2000;
-  
+  // Base RTF wrapper
   let rtf = `{\\rtf1\\ansi\\deff0\\nouicompat\\viewkind4\\uc1{\\fonttbl{\\f0\\fnil\\fcharset0 Arial;}}{\\colortbl ;\\red0\\green0\\blue0;}\\paperw${pw}\\paperh${ph}\\margl1000\\margr1000\\margt540\\margb1000\n`;
   
   const activeJudges = judges.filter(j => !j.Name.startsWith("Absent"));
@@ -397,9 +395,16 @@ export function generateOverlaysRTF(judges, competitors, context, paperSize) {
       const judgeText = judge.Number ? `${judge.Number}. ${judge.Name}` : judge.Name;
       const contestText = `${context.district} - ${context.session}, ${context.date}`;
       
-      rtf += `\\pard\\tqc\\tx${centerTab}\\tqr\\tx${rightTab}\\sa100 \\tab \\f0\\fs20 ${escapeRTF(contestText)} \\tab \\b\\fs32 ${escapeRTF(judgeText)}\\b0\\par\n`;
+      // LINE 1: Centered Convention Info (\qc)
+      rtf += `\\pard\\qc\\sa100\\f0\\fs20 ${escapeRTF(contestText)}\\par\n`;
+      
+      // LINE 2: Right-aligned Judge Info (\qr)
+      rtf += `\\pard\\qr\\sa100\\b\\fs32 ${escapeRTF(judgeText)}\\b0\\par\n`;
+      
+      // LINE 3: Left-aligned Competitor Info (\ql)
       rtf += `\\pard\\ql\\sa100\\fs24 ${escapeRTF(comp.Number + ". " + comp.Name)}\\par\n`;
       
+      // LINES 4+: Left-aligned Director/Members (\ql)
       if (comp.Director) {
         if (context.session.includes("Chorus")) {
           rtf += `\\pard\\ql\\sa100\\fs24 ${escapeRTF(comp.Director)}\\par\n`;
@@ -418,11 +423,14 @@ export function generateOverlaysRTF(judges, competitors, context, paperSize) {
         }
       }
       
+      // Page break for the next sheet
       rtf += `\\page\n`;
     }
   }
   
   rtf += "}";
+  
+  // Save the file
   const blob = new Blob([rtf], { type: "application/rtf" });
   saveAs(blob, `${context.session.replace(/[^a-z0-9]/gi, '_')}_Text_Overlays.rtf`);
 }
