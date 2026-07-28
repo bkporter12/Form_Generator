@@ -65,16 +65,49 @@ export default function App() {
     setCompetitors(competitors.map(c => ({ ...c, Number: "" })));
   };
 
+// UPDATED: Sort Competitors by OA (Lists specific duplicate numbers in warning)
   const sortCompsByOA = () => {
+    // 1. Check for duplicates (ignoring blank entries)
+    const seenNumbers = new Set();
+    const duplicateNumbers = new Set();
+    
+    competitors.forEach(c => {
+      const num = String(c.Number).trim();
+      if (num !== "") {
+        if (seenNumbers.has(num)) {
+          duplicateNumbers.add(num);
+        } else {
+          seenNumbers.add(num);
+        }
+      }
+    });
+
+    if (duplicateNumbers.size > 0) {
+      const dupesList = Array.from(duplicateNumbers).join(', ');
+      alert(`⚠️ Warning: The following Order of Appearance (OA) numbers are duplicated: ${dupesList}\n\nThe list has been sorted, but please verify your numbers.`);
+    }
+
+    // 2. Sort safely without modifying the original data
     const sorted = [...competitors].sort((a, b) => {
-      const numA = a.Number ? parseInt(a.Number) : Infinity;
-      const numB = b.Number ? parseInt(b.Number) : Infinity;
+      const valA = String(a.Number).trim();
+      const valB = String(b.Number).trim();
+      
+      // Convert to integers strictly for sorting purposes
+      const numA = valA !== "" ? parseInt(valA, 10) : Infinity;
+      const numB = valB !== "" ? parseInt(valB, 10) : Infinity;
+      
+      // Sort by number first
       if (numA !== numB) return numA - numB;
+      
+      // If numbers are identical (or both blank), sort alphabetically by Name to keep it stable
       return (a.Name || "").localeCompare(b.Name || "");
     });
-    setCompetitors(sorted);
+    
+    // 3. Force React to update cleanly by mapping into brand new objects
+    setCompetitors(sorted.map(c => ({ ...c })));
   };
 
+  
   // --- GENERATION ACTIONS ---
   const generateByCategory = async () => {
     if (!district || !date) return alert("Please fill in District and Date");
