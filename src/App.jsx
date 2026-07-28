@@ -65,29 +65,59 @@ export default function App() {
     setCompetitors(competitors.map(c => ({ ...c, Number: "" })));
   };
 
-// UPDATED: Sort Competitors by OA (Lists specific duplicate numbers in warning)
+// UPDATED: Sort Competitors by OA (Checks for both duplicates and skipped numbers)
   const sortCompsByOA = () => {
-    // 1. Check for duplicates (ignoring blank entries)
     const seenNumbers = new Set();
     const duplicateNumbers = new Set();
+    const validIntegers = [];
     
+    // 1. Gather data and check for duplicates
     competitors.forEach(c => {
-      const num = String(c.Number).trim();
-      if (num !== "") {
-        if (seenNumbers.has(num)) {
-          duplicateNumbers.add(num);
+      const numStr = String(c.Number).trim();
+      if (numStr !== "") {
+        if (seenNumbers.has(numStr)) {
+          duplicateNumbers.add(numStr);
         } else {
-          seenNumbers.add(num);
+          seenNumbers.add(numStr);
+          // Parse to integer for skip-checking
+          const numInt = parseInt(numStr, 10);
+          if (!isNaN(numInt)) {
+            validIntegers.push(numInt);
+          }
         }
       }
     });
 
-    if (duplicateNumbers.size > 0) {
-      const dupesList = Array.from(duplicateNumbers).join(', ');
-      alert(`⚠️ Warning: The following Order of Appearance (OA) numbers are duplicated: ${dupesList}\n\nThe list has been sorted, but please verify your numbers.`);
+    // 2. Check for skipped numbers (from the lowest to the highest entered)
+    const skippedNumbers = [];
+    if (validIntegers.length > 0) {
+      const minNum = Math.min(...validIntegers);
+      const maxNum = Math.max(...validIntegers);
+      
+      for (let i = minNum + 1; i < maxNum; i++) {
+        if (!validIntegers.includes(i)) {
+          skippedNumbers.push(i);
+        }
+      }
     }
 
-    // 2. Sort safely without modifying the original data
+    // 3. Trigger warning alert if any issues are found
+    if (duplicateNumbers.size > 0 || skippedNumbers.length > 0) {
+      let warningMsg = "⚠️ Warning regarding your Order of Appearance (OA) numbers:\n\n";
+      
+      if (duplicateNumbers.size > 0) {
+        warningMsg += `- Duplicated numbers: ${Array.from(duplicateNumbers).join(', ')}\n`;
+      }
+      
+      if (skippedNumbers.length > 0) {
+        warningMsg += `- Skipped numbers: ${skippedNumbers.join(', ')}\n`;
+      }
+      
+      warningMsg += "\nThe list has been sorted, but please verify your numbers.";
+      alert(warningMsg);
+    }
+
+    // 4. Sort safely without modifying the original data
     const sorted = [...competitors].sort((a, b) => {
       const valA = String(a.Number).trim();
       const valB = String(b.Number).trim();
@@ -103,7 +133,7 @@ export default function App() {
       return (a.Name || "").localeCompare(b.Name || "");
     });
     
-    // 3. Force React to update cleanly by mapping into brand new objects
+    // 5. Force React to update cleanly by mapping into brand new objects
     setCompetitors(sorted.map(c => ({ ...c })));
   };
 
