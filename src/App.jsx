@@ -131,6 +131,15 @@ export default function App() {
     setBlankCounts(prev => ({ ...prev, [`${cat}_${type}`]: val }));
   };
 
+  // NEW: Clear Blank Forms
+  const clearBlanks = () => {
+    setBlankCounts({
+      MUS_Long: "", MUS_Short: "",
+      PER_Long: "", PER_Short: "",
+      SNG_Long: "", SNG_Short: ""
+    });
+  };
+
   const generateBlanks = async () => {
     setIsGenerating(true);
     try {
@@ -367,7 +376,10 @@ export default function App() {
 
       {/* --- BLANK FORMS SECTION --- */}
       <div style={{ marginTop: '30px', background: '#f9f9f9', padding: '20px', borderRadius: '8px' }}>
-        <h3 style={{ margin: '0 0 15px 0' }}>📄 Print Blank Forms</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+          <h3 style={{ margin: 0 }}>📄 Print Blank Forms</h3>
+          <button onClick={clearBlanks} style={{ padding: '4px 8px', cursor: 'pointer', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px' }}>🗑️ Clear</button>
+        </div>
         <table style={{ width: '100%', maxWidth: '600px', borderCollapse: 'collapse', textAlign: 'left' }}>
           <thead>
             <tr>
