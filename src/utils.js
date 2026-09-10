@@ -90,11 +90,18 @@ export function balanceAndSortJudges(judges) {
   return balanced;
 }
 
-// --- PDF GENERATION ---
+// --- PDF GENERATION & IN-MEMORY CACHE ---
+const templateCache = {};
+
 async function fetchTemplate(templateName) {
+  if (templateCache[templateName]) {
+    return templateCache[templateName];
+  }
   const res = await fetch(`/templates/${templateName}`);
   if (!res.ok) throw new Error(`Template ${templateName} not found`);
-  return await res.arrayBuffer();
+  const buffer = await res.arrayBuffer();
+  templateCache[templateName] = buffer;
+  return buffer;
 }
 
 async function drawOverlayText(page, font, boldFont, data, isShort, isRotated = false, applyMargin = false, paperSize = "Letter") {
@@ -178,10 +185,13 @@ async function drawOverlayText(page, font, boldFont, data, isShort, isRotated = 
   }
 }
 
-// 1. GENERATE BY CATEGORY 
+// 1. GENERATE BY CATEGORY (Optimized: Reuses Embedded Template Pages)
 export async function generateCategoryPDFs(judges, competitors, context, paperSize) {
   const zip = new JSZip();
   let filesGenerated = 0;
+
+  const PAGE_WIDTH = paperSize === 'A4' ? 595.28 : 612;
+  const PAGE_HEIGHT = paperSize === 'A4' ? 841.89 : 792;
 
   for (const [cat, formats] of Object.entries(FORMAT_MAPPING)) {
     const catJudges = judges.filter(j => j.Category === cat && !j.Name.startsWith("Absent"));
@@ -196,51 +206,49 @@ export async function generateCategoryPDFs(judges, competitors, context, paperSi
       const helvetica = await outputDoc.embedFont(StandardFonts.Helvetica);
       const helveticaBold = await outputDoc.embedFont(StandardFonts.HelveticaBold);
 
+      // Load template once and embed its pages as reusable XObjects
+      const templateDoc = await PDFDocument.load(templateBytes);
+      const embeddedTemplatePages = [];
+      for (const p of templateDoc.getPages()) {
+        embeddedTemplatePages.push(await outputDoc.embedPage(p));
+      }
+
       for (const judge of catJudges) {
         if (isShort) {
           for (let i = 0; i < competitors.length; i += 2) {
             const comp1 = competitors[i];
             const comp2 = competitors[i + 1];
             
-            const templateDoc = await PDFDocument.load(templateBytes);
-            const [copiedPage] = await outputDoc.copyPages(templateDoc, [0]);
-            
-            let targetPage;
-            if (paperSize === 'A4') {
-              const embedded = await outputDoc.embedPage(copiedPage);
-              targetPage = outputDoc.addPage([595.28, 841.89]);
-              targetPage.drawPage(embedded, { width: 595.28, height: 841.89 });
-            } else {
-              targetPage = copiedPage;
-              outputDoc.addPage(targetPage);
-            }
+            const targetPage = outputDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+            targetPage.drawPage(embeddedTemplatePages[0], {
+              x: 0,
+              y: 0,
+              width: PAGE_WIDTH,
+              height: PAGE_HEIGHT,
+            });
 
             await drawOverlayText(targetPage, helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp1.Name, comp_num: comp1.Number }, true, false, true, paperSize);
             if (comp2) await drawOverlayText(targetPage, helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp2.Name, comp_num: comp2.Number }, true, true, true, paperSize);
           }
         } else {
-           for (const comp of competitors) {
-              const templateDoc = await PDFDocument.load(templateBytes);
-              const copiedPages = await outputDoc.copyPages(templateDoc, templateDoc.getPageIndices());
-              
-              let firstTargetPage;
-              for (let idx = 0; idx < copiedPages.length; idx++) {
-                let targetPage;
-                if (paperSize === 'A4') {
-                  const embedded = await outputDoc.embedPage(copiedPages[idx]);
-                  targetPage = outputDoc.addPage([595.28, 841.89]);
-                  targetPage.drawPage(embedded, { width: 595.28, height: 841.89 });
-                } else {
-                  targetPage = copiedPages[idx];
-                  outputDoc.addPage(targetPage);
-                }
-                if (idx === 0) firstTargetPage = targetPage;
-              }
+          for (const comp of competitors) {
+            let firstTargetPage;
+            for (let idx = 0; idx < embeddedTemplatePages.length; idx++) {
+              const targetPage = outputDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+              targetPage.drawPage(embeddedTemplatePages[idx], {
+                x: 0,
+                y: 0,
+                width: PAGE_WIDTH,
+                height: PAGE_HEIGHT,
+              });
+              if (idx === 0) firstTargetPage = targetPage;
+            }
 
-              await drawOverlayText(firstTargetPage, helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp.Name, comp_num: comp.Number, director: comp.Director }, false, false, true, paperSize);
-           }
+            await drawOverlayText(firstTargetPage, helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp.Name, comp_num: comp.Number, director: comp.Director }, false, false, true, paperSize);
+          }
         }
       }
+
       const pdfBytes = await outputDoc.save();
       const safeDate = context.date.replace(/[/]/g, "-");
       zip.file(`${context.session.replace(/[^a-z0-9]/gi, '_')}_${t_name.replace(".pdf", "")}_${safeDate}.pdf`, pdfBytes);
@@ -254,10 +262,13 @@ export async function generateCategoryPDFs(judges, competitors, context, paperSi
   }
 }
 
-// 2. GENERATE BY JUDGE 
+// 2. GENERATE BY JUDGE (Optimized: Reuses Embedded Template Pages)
 export async function generateJudgePDFs(judges, competitors, context, paperSize) {
   const zip = new JSZip();
   let filesGenerated = 0;
+
+  const PAGE_WIDTH = paperSize === 'A4' ? 595.28 : 612;
+  const PAGE_HEIGHT = paperSize === 'A4' ? 841.89 : 792;
 
   for (const judge of judges) {
     if (judge.Name.startsWith("Absent")) continue;
@@ -276,21 +287,23 @@ export async function generateJudgePDFs(judges, competitors, context, paperSize)
       const templateBytes = await fetchTemplate(t_name).catch(() => null);
       if (!templateBytes) continue;
 
+      // Load template once and embed pages for this judge's packet
+      const templateDoc = await PDFDocument.load(templateBytes);
+      const embeddedTemplatePages = [];
+      for (const p of templateDoc.getPages()) {
+        embeddedTemplatePages.push(await outputDoc.embedPage(p));
+      }
+
       for (const comp of competitors) {
-        const templateDoc = await PDFDocument.load(templateBytes);
-        const copiedPages = await outputDoc.copyPages(templateDoc, templateDoc.getPageIndices());
-        
         let firstTargetPage;
-        for (let idx = 0; idx < copiedPages.length; idx++) {
-          let targetPage;
-          if (paperSize === 'A4') {
-            const embedded = await outputDoc.embedPage(copiedPages[idx]);
-            targetPage = outputDoc.addPage([595.28, 841.89]);
-            targetPage.drawPage(embedded, { width: 595.28, height: 841.89 });
-          } else {
-            targetPage = copiedPages[idx];
-            outputDoc.addPage(targetPage);
-          }
+        for (let idx = 0; idx < embeddedTemplatePages.length; idx++) {
+          const targetPage = outputDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+          targetPage.drawPage(embeddedTemplatePages[idx], {
+            x: 0,
+            y: 0,
+            width: PAGE_WIDTH,
+            height: PAGE_HEIGHT,
+          });
           if (idx === 0) firstTargetPage = targetPage;
         }
         
@@ -417,12 +430,15 @@ export function generateOverlaysRTF(judges, competitors, context, paperSize) {
   saveAs(blob, `${context.session.replace(/[^a-z0-9]/gi, '_')}_Text_Overlays.rtf`);
 }
 
-// 5. GENERATE BLANK PDFs
+// 5. GENERATE BLANK PDFs (Optimized: Reuses Embedded Template Pages)
 export async function generateBlankPDFs(blankCounts, paperSize) {
   const zip = new JSZip();
   let filesGenerated = 0;
   let singlePdfBytes = null;
   let singlePdfName = "";
+
+  const PAGE_WIDTH = paperSize === 'A4' ? 595.28 : 612;
+  const PAGE_HEIGHT = paperSize === 'A4' ? 841.89 : 792;
 
   const categories = [
     { id: 'MUS', name: 'Musicality' },
@@ -443,19 +459,23 @@ export async function generateBlankPDFs(blankCounts, paperSize) {
       const outputDoc = await PDFDocument.create();
       const templateDoc = await PDFDocument.load(templateBytes);
       
+      // Embed template pages once into the blank output document
+      const embeddedTemplatePages = [];
+      for (const p of templateDoc.getPages()) {
+        embeddedTemplatePages.push(await outputDoc.embedPage(p));
+      }
+      
       const copies = type === 'Short' ? Math.ceil(qty / 2) : qty;
-      const pageIndices = templateDoc.getPageIndices();
       
       for (let i = 0; i < copies; i++) {
-        const copiedPages = await outputDoc.copyPages(templateDoc, pageIndices);
-        for (const copiedPage of copiedPages) {
-          if (paperSize === 'A4') {
-            const targetPage = outputDoc.addPage([595.28, 841.89]);
-            const embedded = await outputDoc.embedPage(copiedPage);
-            targetPage.drawPage(embedded, { width: 595.28, height: 841.89 });
-          } else {
-            outputDoc.addPage(copiedPage);
-          }
+        for (const embeddedPage of embeddedTemplatePages) {
+          const targetPage = outputDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+          targetPage.drawPage(embeddedPage, {
+            x: 0,
+            y: 0,
+            width: PAGE_WIDTH,
+            height: PAGE_HEIGHT,
+          });
         }
       }
 
