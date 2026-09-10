@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import Papa from 'papaparse';
-import { balanceAndSortJudges, generateCategoryPDFs, generateJudgePDFs, generateFolderLabelsRTF, generateOverlaysRTF } from './utils';
+import { balanceAndSortJudges, generateCategoryPDFs, generateJudgePDFs, generateFolderLabelsRTF, generateOverlaysRTF, generateBlankPDFs } from './utils';
 
 export default function App() {
   const [district, setDistrict] = useState("");
@@ -10,6 +10,13 @@ export default function App() {
   
   const [judges, setJudges] = useState([]);
   const [competitors, setCompetitors] = useState([]);
+  
+  const [blankCounts, setBlankCounts] = useState({
+    MUS_Long: "", MUS_Short: "",
+    PER_Long: "", PER_Short: "",
+    SNG_Long: "", SNG_Short: ""
+  });
+  
   const [isGenerating, setIsGenerating] = useState(false);
 
   // --- PARSE UPLOADS ---
@@ -65,13 +72,11 @@ export default function App() {
     setCompetitors(competitors.map(c => ({ ...c, Number: "" })));
   };
 
-// UPDATED: Sort Competitors by OA (Checks for both duplicates and skipped numbers)
   const sortCompsByOA = () => {
     const seenNumbers = new Set();
     const duplicateNumbers = new Set();
     const validIntegers = [];
     
-    // 1. Gather data and check for duplicates
     competitors.forEach(c => {
       const numStr = String(c.Number).trim();
       if (numStr !== "") {
@@ -79,7 +84,6 @@ export default function App() {
           duplicateNumbers.add(numStr);
         } else {
           seenNumbers.add(numStr);
-          // Parse to integer for skip-checking
           const numInt = parseInt(numStr, 10);
           if (!isNaN(numInt)) {
             validIntegers.push(numInt);
@@ -88,7 +92,6 @@ export default function App() {
       }
     });
 
-    // 2. Check for skipped numbers (from the lowest to the highest entered)
     const skippedNumbers = [];
     if (validIntegers.length > 0) {
       const minNum = Math.min(...validIntegers);
@@ -101,43 +104,44 @@ export default function App() {
       }
     }
 
-    // 3. Trigger warning alert if any issues are found
     if (duplicateNumbers.size > 0 || skippedNumbers.length > 0) {
       let warningMsg = "⚠️ Warning regarding your Order of Appearance (OA) numbers:\n\n";
-      
-      if (duplicateNumbers.size > 0) {
-        warningMsg += `- Duplicated numbers: ${Array.from(duplicateNumbers).join(', ')}\n`;
-      }
-      
-      if (skippedNumbers.length > 0) {
-        warningMsg += `- Skipped numbers: ${skippedNumbers.join(', ')}\n`;
-      }
-      
+      if (duplicateNumbers.size > 0) warningMsg += `- Duplicated numbers: ${Array.from(duplicateNumbers).join(', ')}\n`;
+      if (skippedNumbers.length > 0) warningMsg += `- Skipped numbers: ${skippedNumbers.join(', ')}\n`;
       warningMsg += "\nThe list has been sorted, but please verify your numbers.";
       alert(warningMsg);
     }
 
-    // 4. Sort safely without modifying the original data
     const sorted = [...competitors].sort((a, b) => {
       const valA = String(a.Number).trim();
       const valB = String(b.Number).trim();
       
-      // Convert to integers strictly for sorting purposes
       const numA = valA !== "" ? parseInt(valA, 10) : Infinity;
       const numB = valB !== "" ? parseInt(valB, 10) : Infinity;
       
-      // Sort by number first
       if (numA !== numB) return numA - numB;
-      
-      // If numbers are identical (or both blank), sort alphabetically by Name to keep it stable
       return (a.Name || "").localeCompare(b.Name || "");
     });
     
-    // 5. Force React to update cleanly by mapping into brand new objects
     setCompetitors(sorted.map(c => ({ ...c })));
   };
 
-  
+  // --- BLANK FORMS HANDLER ---
+  const handleBlankChange = (cat, type, val) => {
+    setBlankCounts(prev => ({ ...prev, [`${cat}_${type}`]: val }));
+  };
+
+  const generateBlanks = async () => {
+    setIsGenerating(true);
+    try {
+      await generateBlankPDFs(blankCounts, paperSize);
+    } catch (err) {
+      console.error(err);
+      alert("Error generating blank forms. Check the browser console for details.");
+    }
+    setIsGenerating(false);
+  };
+
   // --- GENERATION ACTIONS ---
   const generateByCategory = async () => {
     if (!district || !date) return alert("Please fill in District and Date");
@@ -359,6 +363,57 @@ export default function App() {
             ))}
           </div>
         </div>
+      </div>
+
+      {/* --- BLANK FORMS SECTION --- */}
+      <div style={{ marginTop: '30px', background: '#f9f9f9', padding: '20px', borderRadius: '8px' }}>
+        <h3 style={{ margin: '0 0 15px 0' }}>📄 Print Blank Forms</h3>
+        <table style={{ width: '100%', maxWidth: '600px', borderCollapse: 'collapse', textAlign: 'left' }}>
+          <thead>
+            <tr>
+              <th style={{ padding: '8px', borderBottom: '2px solid #ddd' }}>Category</th>
+              <th style={{ padding: '8px', borderBottom: '2px solid #ddd' }}>Long (Double-Sided)</th>
+              <th style={{ padding: '8px', borderBottom: '2px solid #ddd' }}>Short (2 per page)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {['MUS', 'PER', 'SNG'].map(cat => {
+              const catName = cat === 'MUS' ? 'Musicality' : cat === 'PER' ? 'Performance' : 'Singing';
+              return (
+                <tr key={cat}>
+                  <td style={{ padding: '8px', borderBottom: '1px solid #ddd', fontWeight: '500' }}>{catName}</td>
+                  <td style={{ padding: '8px', borderBottom: '1px solid #ddd' }}>
+                    <input 
+                      type="number" 
+                      min="0"
+                      placeholder="0"
+                      value={blankCounts[`${cat}_Long`]} 
+                      onChange={(e) => handleBlankChange(cat, 'Long', e.target.value)}
+                      style={{ width: '80px', padding: '6px' }}
+                    />
+                  </td>
+                  <td style={{ padding: '8px', borderBottom: '1px solid #ddd' }}>
+                    <input 
+                      type="number" 
+                      min="0"
+                      placeholder="0"
+                      value={blankCounts[`${cat}_Short`]} 
+                      onChange={(e) => handleBlankChange(cat, 'Short', e.target.value)}
+                      style={{ width: '80px', padding: '6px' }}
+                    />
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+        <button 
+          onClick={generateBlanks} 
+          disabled={isGenerating || !Object.values(blankCounts).some(v => parseInt(v) > 0)}
+          style={{ marginTop: '15px', padding: '12px 24px', background: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}
+        >
+          {isGenerating ? "⏳ Generating..." : "🖨️ Download Blank Forms"}
+        </button>
       </div>
 
       <div style={{ marginTop: '30px', display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
