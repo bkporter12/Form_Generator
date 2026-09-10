@@ -131,7 +131,6 @@ export default function App() {
     setBlankCounts(prev => ({ ...prev, [`${cat}_${type}`]: val }));
   };
 
-  // NEW: Clear Blank Forms
   const clearBlanks = () => {
     setBlankCounts({
       MUS_Long: "", MUS_Short: "",
@@ -374,7 +373,25 @@ export default function App() {
         </div>
       </div>
 
-      {/* --- BLANK FORMS SECTION --- */}
+      {/* --- GENERATION ACTIONS (MOVED UP) --- */}
+      <div style={{ marginTop: '30px', display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+        <button onClick={generateByCategory} disabled={isGenerating || judges.length === 0} style={{ padding: '12px 24px', background: '#0066cc', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>
+          {isGenerating ? "⏳ Generating..." : "📥 Generate PDFs by Category"}
+        </button>
+        <button onClick={generateByJudge} disabled={isGenerating || judges.length === 0} style={{ padding: '12px 24px', background: '#17a2b8', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>
+          {isGenerating ? "⏳ Generating..." : "📥 Generate PDFs by Judge"}
+        </button>
+        <button onClick={generateOverlays} disabled={judges.length === 0 || competitors.length === 0} style={{ padding: '12px 24px', background: '#6f42c1', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>
+          📄 Generate Overlays (RTF)
+        </button>
+        <button onClick={generateLabels} disabled={judges.length === 0} style={{ padding: '12px 24px', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>
+          🏷️ Generate Folder Labels (RTF)
+        </button>
+      </div>
+
+      <hr style={{ marginTop: '30px', borderTop: '2px solid #eee' }} />
+
+      {/* --- BLANK FORMS SECTION (MOVED DOWN) --- */}
       <div style={{ marginTop: '30px', background: '#f9f9f9', padding: '20px', borderRadius: '8px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
           <h3 style={{ margin: 0 }}>📄 Print Blank Forms</h3>
@@ -428,20 +445,6 @@ export default function App() {
         </button>
       </div>
 
-      <div style={{ marginTop: '30px', display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-        <button onClick={generateByCategory} disabled={isGenerating || judges.length === 0} style={{ padding: '12px 24px', background: '#0066cc', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>
-          {isGenerating ? "⏳ Generating..." : "📥 Generate PDFs by Category"}
-        </button>
-        <button onClick={generateByJudge} disabled={isGenerating || judges.length === 0} style={{ padding: '12px 24px', background: '#17a2b8', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>
-          {isGenerating ? "⏳ Generating..." : "📥 Generate PDFs by Judge"}
-        </button>
-        <button onClick={generateOverlays} disabled={judges.length === 0 || competitors.length === 0} style={{ padding: '12px 24px', background: '#6f42c1', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>
-          📄 Generate Overlays (RTF)
-        </button>
-        <button onClick={generateLabels} disabled={judges.length === 0} style={{ padding: '12px 24px', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>
-          🏷️ Generate Folder Labels (RTF)
-        </button>
-      </div>
     </div>
   );
 }
