@@ -400,7 +400,6 @@ export function generateOverlaysRTF(judges, competitors, context, paperSize) {
   const pw = paperSize === 'A4' ? 11906 : 12240;
   const ph = paperSize === 'A4' ? 16838 : 15840;
   
-  // Changed \margt540 to \margt288 (0.2 inches = 288 twips)
   let rtf = `{\\rtf1\\ansi\\deff0\\nouicompat\\viewkind4\\uc1{\\fonttbl{\\f0\\fnil\\fcharset0 Arial;}}{\\colortbl ;\\red0\\green0\\blue0;}\\paperw${pw}\\paperh${ph}\\margl1000\\margr1000\\margt288\\margb1000\n`;
   
   const activeJudges = judges.filter(j => !j.Name.startsWith("Absent"));
@@ -438,6 +437,7 @@ export function generateOverlaysRTF(judges, competitors, context, paperSize) {
   rtf += "}";
   const blob = new Blob([rtf], { type: "application/rtf" });
   saveAs(blob, `${context.session.replace(/[^a-z0-9]/gi, '_')}_Text_Overlays.rtf`);
+}
 
 // 5. GENERATE BLANK PDFs (Optimized: Reuses Embedded Template Pages)
 export async function generateBlankPDFs(blankCounts, paperSize) {
