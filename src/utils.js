@@ -22,6 +22,15 @@ const CAT_FULL_NAMES = { MUS: "Musicality", PER: "Performance", SNG: "Singing" }
 
 // --- DATA PROCESSING ---
 
+/**
+ * Escapes special characters for RTF document generation
+ */
+const escapeRTF = (str) => {
+  if (str === null || str === undefined) return '';
+  // Escapes \, {, and } which are reserved characters in RTF formatting
+  return String(str).replace(/([{}\\])/g, '\\$1');
+};
+
 // Helper to find the first capitalized word after the first name
 function getLastNameSortKey(fullName) {
   const name = fullName || "";
