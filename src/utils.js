@@ -403,9 +403,14 @@ export function generateOverlaysRTF(judges, competitors, context, paperSize) {
   let rtf = `{\\rtf1\\ansi\\deff0\\nouicompat\\viewkind4\\uc1{\\fonttbl{\\f0\\fnil\\fcharset0 Arial;}}{\\colortbl ;\\red0\\green0\\blue0;}\\paperw${pw}\\paperh${ph}\\margl1000\\margr1000\\margt288\\margb1000\n`;
   
   const activeJudges = judges.filter(j => !j.Name.startsWith("Absent"));
+  
+  // Track our progress so we know when to stop adding page breaks
+  const totalPages = activeJudges.length * competitors.length;
+  let currentPage = 0;
 
   for (const judge of activeJudges) {
     for (const comp of competitors) {
+      currentPage++;
       const judgeText = judge.Number ? `${judge.Number}. ${judge.Name}` : judge.Name;
       const contestText = `${context.district} - ${context.session}, ${context.date}`;
       
@@ -430,7 +435,11 @@ export function generateOverlaysRTF(judges, competitors, context, paperSize) {
           }
         }
       }
-      rtf += `\\page\n`;
+      
+      // Only insert a page break if this is NOT the very last overlay
+      if (currentPage < totalPages) {
+        rtf += `\\page\n`;
+      }
     }
   }
   
