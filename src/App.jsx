@@ -2,6 +2,15 @@ import React, { useState } from 'react';
 import Papa from 'papaparse';
 import { balanceAndSortJudges, generateCategoryPDFs, generateJudgePDFs, generateFolderLabelsRTF, generateOverlaysRTF, generateBlankPDFs } from './utils';
 
+/**
+ * Escapes special characters for RTF document generation
+ */
+const escapeRTF = (str) => {
+  if (str === null || str === undefined) return '';
+  // Escapes \, {, and } which are reserved characters in RTF formatting
+  return String(str).replace(/([{}\\])/g, '\\$1');
+};
+
 export default function App() {
   const [district, setDistrict] = useState("");
   const [date, setDate] = useState("");
