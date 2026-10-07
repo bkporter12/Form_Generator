@@ -103,7 +103,6 @@ async function fetchTemplate(templateName) {
   return buffer;
 }
 
-// Added pageIndex parameter to conditionally render text on multi-page templates
 async function drawOverlayText(page, font, boldFont, data, isShort, isRotated = false, applyMargin = false, paperSize = "Letter", pageIndex = 0) {
   const { judge_name, judge_num, comp_name, comp_num, district, session, date, director } = data;
 
@@ -160,7 +159,7 @@ async function drawOverlayText(page, font, boldFont, data, isShort, isRotated = 
 
     if (!isShort && director) {
       if (session.includes("Chorus")) {
-        drawText(director, LAYOUT.margin_left, LAYOUT.comp_y - 18, 12, font); // Shifted down 4pt
+        drawText(director, LAYOUT.margin_left, LAYOUT.comp_y - 18, 12, font);
       } else if (session.includes("Quartet")) {
         const parts = director.split(',').map(s => s.trim()).filter(s => s);
         let line1 = director;
@@ -171,9 +170,9 @@ async function drawOverlayText(page, font, boldFont, data, isShort, isRotated = 
           line2 = parts.slice(2).join(', ');
         }
         
-        drawText(line1, LAYOUT.margin_left, LAYOUT.comp_y - 18, 10, font); // Shifted down 4pt
+        drawText(line1, LAYOUT.margin_left, LAYOUT.comp_y - 18, 10, font);
         if (line2) {
-          drawText(line2, LAYOUT.margin_left, LAYOUT.comp_y - 30, 10, font); // Shifted down 6pt
+          drawText(line2, LAYOUT.margin_left, LAYOUT.comp_y - 30, 10, font);
         }
       }
     }
@@ -230,12 +229,11 @@ export async function generateCategoryPDFs(judges, competitors, context, paperSi
               height: PAGE_HEIGHT,
             });
 
-            await drawOverlayText(targetPage, helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp1.Name, comp_num: comp1.Number }, true, false, true, paperSize);
-            if (comp2) await drawOverlayText(targetPage, helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp2.Name, comp_num: comp2.Number }, true, true, true, paperSize);
+            await drawOverlayText(targetPage, helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp1.Name, comp_num: comp1.Number }, true, false, true, paperSize, 0);
+            if (comp2) await drawOverlayText(targetPage, helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp2.Name, comp_num: comp2.Number }, true, true, true, paperSize, 0);
           }
         } else {
           for (const comp of competitors) {
-            // Apply overlay to ALL template pages (drawOverlayText handles restricting the Judge/Contest to idx 0 internally)
             for (let idx = 0; idx < embeddedTemplatePages.length; idx++) {
               const targetPage = outputDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
               targetPage.drawPage(embeddedTemplatePages[idx], {
@@ -295,7 +293,6 @@ export async function generateJudgePDFs(judges, competitors, context, paperSize)
       }
 
       for (const comp of competitors) {
-        // Apply overlay to ALL template pages (drawOverlayText handles restricting the Judge/Contest to idx 0 internally)
         for (let idx = 0; idx < embeddedTemplatePages.length; idx++) {
           const targetPage = outputDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
           targetPage.drawPage(embeddedTemplatePages[idx], {
@@ -348,6 +345,9 @@ export async function generateJudgePDFs(judges, competitors, context, paperSize)
     saveAs(zipBlob, `${context.session.replace(/[^a-z0-9]/gi, '_')}_Judge_Packets.zip`);
   }
 }
+
+// --- RTF GENERATION ---
+const escapeRTF = (text) => String(text || "").replace(/\\/g, '\\\\').replace(/\{/g, '\\{').replace(/\}/g, '\\}');
 
 // 3. GENERATE FOLDER LABELS
 export function generateFolderLabelsRTF(judges, context, paperSize) {
