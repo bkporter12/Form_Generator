@@ -22,16 +22,6 @@ const CAT_FULL_NAMES = { MUS: "Musicality", PER: "Performance", SNG: "Singing" }
 
 // --- DATA PROCESSING ---
 
-/**
- * Escapes special characters for RTF document generation
- */
-const escapeRTF = (str) => {
-  if (str === null || str === undefined) return '';
-  // Escapes \, {, and } which are reserved characters in RTF formatting
-  return String(str).replace(/([{}\\])/g, '\\$1');
-};
-
-// Helper to find the first capitalized word after the first name
 function getLastNameSortKey(fullName) {
   const name = fullName || "";
   const parts = name.trim().split(/\s+/);
@@ -113,7 +103,8 @@ async function fetchTemplate(templateName) {
   return buffer;
 }
 
-async function drawOverlayText(page, font, boldFont, data, isShort, isRotated = false, applyMargin = false, paperSize = "Letter") {
+// Added pageIndex parameter to conditionally render text on multi-page templates
+async function drawOverlayText(page, font, boldFont, data, isShort, isRotated = false, applyMargin = false, paperSize = "Letter", pageIndex = 0) {
   const { judge_name, judge_num, comp_name, comp_num, district, session, date, director } = data;
 
   const PAGE_WIDTH = paperSize === 'A4' ? 595.28 : 612;
@@ -147,54 +138,58 @@ async function drawOverlayText(page, font, boldFont, data, isShort, isRotated = 
     page.drawText(text, { x, y, size, font: f, color: rgb(0,0,0), rotate: degrees(isRotated ? 180 : 0) });
   };
 
-  let nameText = String(judge_name);
-  let numText = String(judge_num || ""); 
-  
-  if (isShort) {
-    const nameWidth = boldFont.widthOfTextAtSize(nameText, 16);
-    drawText(nameText, LAYOUT.margin_right - nameWidth, LAYOUT.judge_y, 16, boldFont);
+  // 1. COMPETITOR NAME & OA - Printed on ALL pages, enlarged to 16pt bold
+  drawText(`${comp_num}. ${comp_name}`, LAYOUT.margin_left, LAYOUT.comp_y, 16, boldFont);
+
+  // 2. REST OF HEADER - Restricted to Page 1 (pageIndex === 0)
+  if (pageIndex === 0) {
+    let nameText = String(judge_name);
+    let numText = String(judge_num || ""); 
     
-    const numWidth = boldFont.widthOfTextAtSize(numText, 36);
-    drawText(numText, LAYOUT.margin_right - nameWidth - 15 - numWidth, LAYOUT.judge_y, 36, boldFont);
-  } else {
-    const text = numText ? `${numText}. ${nameText}` : nameText;
-    const textWidth = boldFont.widthOfTextAtSize(text, 16);
-    drawText(text, LAYOUT.margin_right - textWidth, LAYOUT.judge_y, 16, boldFont);
-  }
-
-  drawText(`${comp_num}. ${comp_name}`, LAYOUT.margin_left, LAYOUT.comp_y, 12, font);
-
-  if (!isShort && director) {
-    if (session.includes("Chorus")) {
-      drawText(director, LAYOUT.margin_left, LAYOUT.comp_y - 14, 12, font);
-    } else if (session.includes("Quartet")) {
-      const parts = director.split(',').map(s => s.trim()).filter(s => s);
-      let line1 = director;
-      let line2 = "";
+    if (isShort) {
+      const nameWidth = boldFont.widthOfTextAtSize(nameText, 16);
+      drawText(nameText, LAYOUT.margin_right - nameWidth, LAYOUT.judge_y, 16, boldFont);
       
-      if (parts.length >= 3) {
-        line1 = parts.slice(0, 2).join(', ');
-        line2 = parts.slice(2).join(', ');
-      }
-      
-      drawText(line1, LAYOUT.margin_left, LAYOUT.comp_y - 12, 10, font);
-      if (line2) {
-        drawText(line2, LAYOUT.margin_left, LAYOUT.comp_y - 24, 10, font);
+      const numWidth = boldFont.widthOfTextAtSize(numText, 36);
+      drawText(numText, LAYOUT.margin_right - nameWidth - 15 - numWidth, LAYOUT.judge_y, 36, boldFont);
+    } else {
+      const text = numText ? `${numText}. ${nameText}` : nameText;
+      const textWidth = boldFont.widthOfTextAtSize(text, 16);
+      drawText(text, LAYOUT.margin_right - textWidth, LAYOUT.judge_y, 16, boldFont);
+    }
+
+    if (!isShort && director) {
+      if (session.includes("Chorus")) {
+        drawText(director, LAYOUT.margin_left, LAYOUT.comp_y - 18, 12, font); // Shifted down 4pt
+      } else if (session.includes("Quartet")) {
+        const parts = director.split(',').map(s => s.trim()).filter(s => s);
+        let line1 = director;
+        let line2 = "";
+        
+        if (parts.length >= 3) {
+          line1 = parts.slice(0, 2).join(', ');
+          line2 = parts.slice(2).join(', ');
+        }
+        
+        drawText(line1, LAYOUT.margin_left, LAYOUT.comp_y - 18, 10, font); // Shifted down 4pt
+        if (line2) {
+          drawText(line2, LAYOUT.margin_left, LAYOUT.comp_y - 30, 10, font); // Shifted down 6pt
+        }
       }
     }
-  }
 
-  const contestText = `${district} - ${session}, ${date}`;
-  const contestWidth = font.widthOfTextAtSize(contestText, 10);
-  
-  if (isShort) {
-    drawText(contestText, LAYOUT.page_center - (contestWidth / 2), LAYOUT.contest_y, 10, font);
-  } else {
-    drawText(contestText, LAYOUT.margin_right - contestWidth, LAYOUT.contest_y, 10, font);
+    const contestText = `${district} - ${session}, ${date}`;
+    const contestWidth = font.widthOfTextAtSize(contestText, 10);
+    
+    if (isShort) {
+      drawText(contestText, LAYOUT.page_center - (contestWidth / 2), LAYOUT.contest_y, 10, font);
+    } else {
+      drawText(contestText, LAYOUT.margin_right - contestWidth, LAYOUT.contest_y, 10, font);
+    }
   }
 }
 
-// 1. GENERATE BY CATEGORY (Optimized: Reuses Embedded Template Pages)
+// 1. GENERATE BY CATEGORY
 export async function generateCategoryPDFs(judges, competitors, context, paperSize) {
   const zip = new JSZip();
   let filesGenerated = 0;
@@ -215,7 +210,6 @@ export async function generateCategoryPDFs(judges, competitors, context, paperSi
       const helvetica = await outputDoc.embedFont(StandardFonts.Helvetica);
       const helveticaBold = await outputDoc.embedFont(StandardFonts.HelveticaBold);
 
-      // Load template once and embed its pages as reusable XObjects
       const templateDoc = await PDFDocument.load(templateBytes);
       const embeddedTemplatePages = [];
       for (const p of templateDoc.getPages()) {
@@ -241,7 +235,7 @@ export async function generateCategoryPDFs(judges, competitors, context, paperSi
           }
         } else {
           for (const comp of competitors) {
-            let firstTargetPage;
+            // Apply overlay to ALL template pages (drawOverlayText handles restricting the Judge/Contest to idx 0 internally)
             for (let idx = 0; idx < embeddedTemplatePages.length; idx++) {
               const targetPage = outputDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
               targetPage.drawPage(embeddedTemplatePages[idx], {
@@ -250,10 +244,8 @@ export async function generateCategoryPDFs(judges, competitors, context, paperSi
                 width: PAGE_WIDTH,
                 height: PAGE_HEIGHT,
               });
-              if (idx === 0) firstTargetPage = targetPage;
+              await drawOverlayText(targetPage, helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp.Name, comp_num: comp.Number, director: comp.Director }, false, false, true, paperSize, idx);
             }
-
-            await drawOverlayText(firstTargetPage, helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp.Name, comp_num: comp.Number, director: comp.Director }, false, false, true, paperSize);
           }
         }
       }
@@ -271,7 +263,7 @@ export async function generateCategoryPDFs(judges, competitors, context, paperSi
   }
 }
 
-// 2. GENERATE BY JUDGE (Optimized: Reuses Embedded Template Pages)
+// 2. GENERATE BY JUDGE 
 export async function generateJudgePDFs(judges, competitors, context, paperSize) {
   const zip = new JSZip();
   let filesGenerated = 0;
@@ -296,7 +288,6 @@ export async function generateJudgePDFs(judges, competitors, context, paperSize)
       const templateBytes = await fetchTemplate(t_name).catch(() => null);
       if (!templateBytes) continue;
 
-      // Load template once and embed pages for this judge's packet
       const templateDoc = await PDFDocument.load(templateBytes);
       const embeddedTemplatePages = [];
       for (const p of templateDoc.getPages()) {
@@ -304,7 +295,7 @@ export async function generateJudgePDFs(judges, competitors, context, paperSize)
       }
 
       for (const comp of competitors) {
-        let firstTargetPage;
+        // Apply overlay to ALL template pages (drawOverlayText handles restricting the Judge/Contest to idx 0 internally)
         for (let idx = 0; idx < embeddedTemplatePages.length; idx++) {
           const targetPage = outputDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
           targetPage.drawPage(embeddedTemplatePages[idx], {
@@ -313,10 +304,9 @@ export async function generateJudgePDFs(judges, competitors, context, paperSize)
             width: PAGE_WIDTH,
             height: PAGE_HEIGHT,
           });
-          if (idx === 0) firstTargetPage = targetPage;
+          
+          await drawOverlayText(targetPage, helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp.Name, comp_num: comp.Number, director: comp.Director }, false, false, false, paperSize, idx);
         }
-        
-        await drawOverlayText(firstTargetPage, helvetica, helveticaBold, { ...context, judge_name: judge.Name, judge_num: judge.Number, comp_name: comp.Name, comp_num: comp.Number, director: comp.Director }, false, false, false, paperSize);
         pagesAdded++;
       }
     }
@@ -400,17 +390,12 @@ export function generateOverlaysRTF(judges, competitors, context, paperSize) {
   const pw = paperSize === 'A4' ? 11906 : 12240;
   const ph = paperSize === 'A4' ? 16838 : 15840;
   
-  let rtf = `{\\rtf1\\ansi\\deff0\\nouicompat\\viewkind4\\uc1{\\fonttbl{\\f0\\fnil\\fcharset0 Arial;}}{\\colortbl ;\\red0\\green0\\blue0;}\\paperw${pw}\\paperh${ph}\\margl1000\\margr1000\\margt288\\margb1000\n`;
+  let rtf = `{\\rtf1\\ansi\\deff0\\nouicompat\\viewkind4\\uc1{\\fonttbl{\\f0\\fnil\\fcharset0 Arial;}}{\\colortbl ;\\red0\\green0\\blue0;}\\paperw${pw}\\paperh${ph}\\margl1000\\margr1000\\margt540\\margb1000\n`;
   
   const activeJudges = judges.filter(j => !j.Name.startsWith("Absent"));
-  
-  // Track our progress so we know when to stop adding page breaks
-  const totalPages = activeJudges.length * competitors.length;
-  let currentPage = 0;
 
   for (const judge of activeJudges) {
     for (const comp of competitors) {
-      currentPage++;
       const judgeText = judge.Number ? `${judge.Number}. ${judge.Name}` : judge.Name;
       const contestText = `${context.district} - ${context.session}, ${context.date}`;
       
@@ -435,11 +420,7 @@ export function generateOverlaysRTF(judges, competitors, context, paperSize) {
           }
         }
       }
-      
-      // Only insert a page break if this is NOT the very last overlay
-      if (currentPage < totalPages) {
-        rtf += `\\page\n`;
-      }
+      rtf += `\\page\n`;
     }
   }
   
@@ -448,7 +429,7 @@ export function generateOverlaysRTF(judges, competitors, context, paperSize) {
   saveAs(blob, `${context.session.replace(/[^a-z0-9]/gi, '_')}_Text_Overlays.rtf`);
 }
 
-// 5. GENERATE BLANK PDFs (Optimized: Reuses Embedded Template Pages)
+// 5. GENERATE BLANK PDFs
 export async function generateBlankPDFs(blankCounts, paperSize) {
   const zip = new JSZip();
   let filesGenerated = 0;
@@ -477,7 +458,6 @@ export async function generateBlankPDFs(blankCounts, paperSize) {
       const outputDoc = await PDFDocument.create();
       const templateDoc = await PDFDocument.load(templateBytes);
       
-      // Embed template pages once into the blank output document
       const embeddedTemplatePages = [];
       for (const p of templateDoc.getPages()) {
         embeddedTemplatePages.push(await outputDoc.embedPage(p));
