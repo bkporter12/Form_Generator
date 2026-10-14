@@ -390,6 +390,9 @@ export function generateOverlaysRTF(judges, competitors, context, paperSize) {
   const pw = paperSize === 'A4' ? 11906 : 12240;
   const ph = paperSize === 'A4' ? 16838 : 15840;
   
+  // Calculate the exact right margin for the tab stop (subtracting the 1000 twip left/right margins)
+  const rightTab = pw - 2000;
+  
   let rtf = `{\\rtf1\\ansi\\deff0\\nouicompat\\viewkind4\\uc1{\\fonttbl{\\f0\\fnil\\fcharset0 Arial;}}{\\colortbl ;\\red0\\green0\\blue0;}\\paperw${pw}\\paperh${ph}\\margl1000\\margr1000\\margt540\\margb1000\n`;
   
   const activeJudges = judges.filter(j => !j.Name.startsWith("Absent"));
@@ -397,12 +400,16 @@ export function generateOverlaysRTF(judges, competitors, context, paperSize) {
   for (const judge of activeJudges) {
     for (const comp of competitors) {
       const judgeText = judge.Number ? `${judge.Number}. ${judge.Name}` : judge.Name;
+      const compText = `${comp.Number}. ${comp.Name}`;
       const contestText = `${context.district} - ${context.session}, ${context.date}`;
       
+      // LINE 1: Centered Convention Info
       rtf += `\\pard\\qc\\sa100\\f0\\fs20 ${escapeRTF(contestText)}\\par\n`;
-      rtf += `\\pard\\qr\\sa100\\b\\fs32 ${escapeRTF(judgeText)}\\b0\\par\n`;
-      rtf += `\\pard\\ql\\sa100\\fs24 ${escapeRTF(comp.Number + ". " + comp.Name)}\\par\n`;
       
+      // LINE 2: Competitor Info on Left, Judge Info on Right (using tab stop)
+      rtf += `\\pard\\tqr\\tx${rightTab}\\sa100\\fs24 ${escapeRTF(compText)} \\tab \\b\\fs32 ${escapeRTF(judgeText)}\\b0\\par\n`;
+      
+      // LINES 3+: Left-aligned Director/Members
       if (comp.Director) {
         if (context.session.includes("Chorus")) {
           rtf += `\\pard\\ql\\sa100\\fs24 ${escapeRTF(comp.Director)}\\par\n`;
