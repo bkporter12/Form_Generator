@@ -406,25 +406,15 @@ export function generateOverlaysRTF(judges, competitors, context, paperSize) {
       // LINE 1: Centered Convention Info
       rtf += `\\pard\\qc\\sa100\\f0\\fs20 ${escapeRTF(contestText)}\\par\n`;
       
-      // LINE 2: Competitor Info on Left, Judge Info on Right (using tab stop)
-      rtf += `\\pard\\tqr\\tx${rightTab}\\sa100\\fs24 ${escapeRTF(compText)} \\tab \\b\\fs32 ${escapeRTF(judgeText)}\\b0\\par\n`;
+      // LINE 2: Competitor Info on Left, Judge Info on Right (Both 16pt Bold)
+      rtf += `\\pard\\tqr\\tx${rightTab}\\sa100\\b\\fs32 ${escapeRTF(compText)} \\tab ${escapeRTF(judgeText)}\\b0\\par\n`;
       
-      // LINES 3+: Left-aligned Director/Members
+      // LINE 3: Left-aligned Director/Members (single line)
       if (comp.Director) {
         if (context.session.includes("Chorus")) {
           rtf += `\\pard\\ql\\sa100\\fs24 ${escapeRTF(comp.Director)}\\par\n`;
         } else if (context.session.includes("Quartet")) {
-          const parts = comp.Director.split(',').map(s => s.trim()).filter(s => s);
-          let line1 = comp.Director;
-          let line2 = "";
-          if (parts.length >= 3) {
-            line1 = parts.slice(0, 2).join(', ');
-            line2 = parts.slice(2).join(', ');
-          }
-          rtf += `\\pard\\ql\\sa100\\fs20 ${escapeRTF(line1)}\\par\n`;
-          if (line2) {
-            rtf += `\\pard\\ql\\sa100\\fs20 ${escapeRTF(line2)}\\par\n`;
-          }
+          rtf += `\\pard\\ql\\sa100\\fs20 ${escapeRTF(comp.Director)}\\par\n`;
         }
       }
       rtf += `\\page\n`;
