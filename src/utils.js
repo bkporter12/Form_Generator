@@ -92,13 +92,31 @@ export function balanceAndSortJudges(judges) {
 // --- TEXT SANITIZATION ---
 export function sanitizeText(str) {
   if (str === null || str === undefined) return "";
-  return String(str)
-    .replace(/[\u2018\u2019]/g, "'") // Convert smart single quotes
-    .replace(/[\u201C\u201D]/g, '"') // Convert smart double quotes
-    .replace(/[\u2013\u2014]/g, "-") // Convert En/Em dashes
-    .normalize("NFD")                // Decompose combined characters (ō -> o + macron)
-    .replace(/[\u0300-\u036f]/g, "") // Remove the diacritic marks
-    .replace(/[^\x00-\xFF]/g, "");   // Strip remaining non-WinAnsi characters
+  
+  // This regex contains the exact Unicode ranges allowed by pdf-lib's WinAnsiEncoding (Windows-1252)
+  // It includes standard Latin-1 (\x00-\xFF) plus specific extended characters (smart quotes, dashes, œ, Š, etc.)
+  const winAnsiRegex = /^[\x00-\xFF\u0152\u0153\u0160\u0161\u0178\u017D\u017E\u0192\u02C6\u02DC\u2013\u2014\u2018-\u201A\u201C-\u201E\u2020-\u2022\u2026\u2030\u2039\u203A\u20AC\u2122]+$/;
+
+  let result = "";
+  
+  // Loop through the string one character at a time
+  for (const char of String(str)) {
+    // 1. If it's supported by WinAnsi, keep it exactly as-is (preserves é, ñ, “, etc.)
+    if (winAnsiRegex.test(char)) {
+      result += char;
+    } else {
+      // 2. If unsupported, try to decompose it and strip the accent (e.g., ō -> o)
+      const flattened = char.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      
+      // 3. Check if the newly flattened base character is valid. If yes, keep it.
+      if (winAnsiRegex.test(flattened)) {
+        result += flattened;
+      }
+      // If it still isn't valid (like an emoji), it is safely ignored.
+    }
+  }
+  
+  return result;
 }
 
 // --- PDF GENERATION & IN-MEMORY CACHE ---
