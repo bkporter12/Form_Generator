@@ -89,6 +89,18 @@ export function balanceAndSortJudges(judges) {
   return balanced;
 }
 
+// --- TEXT SANITIZATION ---
+export function sanitizeText(str) {
+  if (str === null || str === undefined) return "";
+  return String(str)
+    .replace(/[\u2018\u2019]/g, "'") // Convert smart single quotes
+    .replace(/[\u201C\u201D]/g, '"') // Convert smart double quotes
+    .replace(/[\u2013\u2014]/g, "-") // Convert En/Em dashes
+    .normalize("NFD")                // Decompose combined characters (ō -> o + macron)
+    .replace(/[\u0300-\u036f]/g, "") // Remove the diacritic marks
+    .replace(/[^\x00-\xFF]/g, "");   // Strip remaining non-WinAnsi characters
+}
+
 // --- PDF GENERATION & IN-MEMORY CACHE ---
 const templateCache = {};
 
@@ -104,7 +116,16 @@ async function fetchTemplate(templateName) {
 }
 
 async function drawOverlayText(page, font, boldFont, data, isShort, isRotated = false, applyMargin = false, paperSize = "Letter", pageIndex = 0) {
-  const { judge_name, judge_num, comp_name, comp_num, district, session, date, director } = data;
+  
+  // Sanitize all incoming strings to prevent WinAnsi encoding crashes
+  const judge_name = sanitizeText(data.judge_name);
+  const judge_num = sanitizeText(data.judge_num);
+  const comp_name = sanitizeText(data.comp_name);
+  const comp_num = sanitizeText(data.comp_num);
+  const district = sanitizeText(data.district);
+  const session = sanitizeText(data.session);
+  const date = sanitizeText(data.date);
+  const director = sanitizeText(data.director);
 
   const PAGE_WIDTH = paperSize === 'A4' ? 595.28 : 612;
   const PAGE_HEIGHT = paperSize === 'A4' ? 841.89 : 792;
@@ -137,10 +158,8 @@ async function drawOverlayText(page, font, boldFont, data, isShort, isRotated = 
     page.drawText(text, { x, y, size, font: f, color: rgb(0,0,0), rotate: degrees(isRotated ? 180 : 0) });
   };
 
-  // 1. COMPETITOR NAME & OA - Printed on ALL pages, enlarged to 16pt bold
   drawText(`${comp_num}. ${comp_name}`, LAYOUT.margin_left, LAYOUT.comp_y, 16, boldFont);
 
-  // 2. REST OF HEADER - Restricted to Page 1 (pageIndex === 0)
   if (pageIndex === 0) {
     let nameText = String(judge_name);
     let numText = String(judge_num || ""); 
@@ -161,19 +180,7 @@ async function drawOverlayText(page, font, boldFont, data, isShort, isRotated = 
       if (session.includes("Chorus")) {
         drawText(director, LAYOUT.margin_left, LAYOUT.comp_y - 18, 12, font);
       } else if (session.includes("Quartet")) {
-        const parts = director.split(',').map(s => s.trim()).filter(s => s);
-        let line1 = director;
-        let line2 = "";
-        
-        if (parts.length >= 3) {
-          line1 = parts.slice(0, 2).join(', ');
-          line2 = parts.slice(2).join(', ');
-        }
-        
-        drawText(line1, LAYOUT.margin_left, LAYOUT.comp_y - 18, 10, font);
-        if (line2) {
-          drawText(line2, LAYOUT.margin_left, LAYOUT.comp_y - 30, 10, font);
-        }
+        drawText(director, LAYOUT.margin_left, LAYOUT.comp_y - 18, 10, font);
       }
     }
 
@@ -249,15 +256,15 @@ export async function generateCategoryPDFs(judges, competitors, context, paperSi
       }
 
       const pdfBytes = await outputDoc.save();
-      const safeDate = context.date.replace(/[/]/g, "-");
-      zip.file(`${context.session.replace(/[^a-z0-9]/gi, '_')}_${t_name.replace(".pdf", "")}_${safeDate}.pdf`, pdfBytes);
+      const safeDate = sanitizeText(context.date).replace(/[/]/g, "-");
+      zip.file(`${sanitizeText(context.session).replace(/[^a-z0-9]/gi, '_')}_${t_name.replace(".pdf", "")}_${safeDate}.pdf`, pdfBytes);
       filesGenerated++;
     }
   }
 
   if (filesGenerated > 0) {
     const zipBlob = await zip.generateAsync({ type: "blob" });
-    saveAs(zipBlob, `${context.session.replace(/[^a-z0-9]/gi, '_')}_Category_Files.zip`);
+    saveAs(zipBlob, `${sanitizeText(context.session).replace(/[^a-z0-9]/gi, '_')}_Category_Files.zip`);
   }
 }
 
@@ -310,9 +317,9 @@ export async function generateJudgePDFs(judges, competitors, context, paperSize)
 
     if (pagesAdded > 0) {
       const pdfBytes = await outputDoc.save();
-      const safeJudge = judge.Name.replace(/[^a-z0-9]/gi, '_');
-      const safeDate = context.date.replace(/[/]/g, "-");
-      const fname = `${context.session.replace(/[^a-z0-9]/gi, '_')}_${safeJudge}_${safeDate}.pdf`;
+      const safeJudge = sanitizeText(judge.Name).replace(/[^a-z0-9]/gi, '_');
+      const safeDate = sanitizeText(context.date).replace(/[/]/g, "-");
+      const fname = `${sanitizeText(context.session).replace(/[^a-z0-9]/gi, '_')}_${safeJudge}_${safeDate}.pdf`;
       zip.file(fname, pdfBytes);
       filesGenerated++;
     }
@@ -326,28 +333,31 @@ export async function generateJudgePDFs(judges, competitors, context, paperSize)
       return (a.Name || "").localeCompare(b.Name || "");
     });
 
-    let txt = `${context.district} - ${context.session}\n${context.date}\n\n`;
+    let txt = `${sanitizeText(context.district)} - ${sanitizeText(context.session)}\n${sanitizeText(context.date)}\n\n`;
     txt += `Order of Appearance:\n`;
     txt += `--------------------\n`;
     
     sortedComps.forEach(comp => {
       const oa = comp.Number || "TBD";
-      let line = `${oa}. ${comp.Name}`;
+      let line = `${oa}. ${sanitizeText(comp.Name)}`;
       if (comp.Director) {
-        line += ` (${comp.Director})`;
+        line += ` (${sanitizeText(comp.Director)})`;
       }
       txt += line + `\n`;
     });
 
-    zip.file(`${context.session.replace(/[^a-z0-9]/gi, '_')}_Competitor_List.txt`, txt);
+    zip.file(`${sanitizeText(context.session).replace(/[^a-z0-9]/gi, '_')}_Competitor_List.txt`, txt);
 
     const zipBlob = await zip.generateAsync({ type: "blob" });
-    saveAs(zipBlob, `${context.session.replace(/[^a-z0-9]/gi, '_')}_Judge_Packets.zip`);
+    saveAs(zipBlob, `${sanitizeText(context.session).replace(/[^a-z0-9]/gi, '_')}_Judge_Packets.zip`);
   }
 }
 
 // --- RTF GENERATION ---
-const escapeRTF = (text) => String(text || "").replace(/\\/g, '\\\\').replace(/\{/g, '\\{').replace(/\}/g, '\\}');
+const escapeRTF = (text) => {
+  const sanitized = sanitizeText(text);
+  return String(sanitized || "").replace(/\\/g, '\\\\').replace(/\{/g, '\\{').replace(/\}/g, '\\}');
+};
 
 // 3. GENERATE FOLDER LABELS
 export function generateFolderLabelsRTF(judges, context, paperSize) {
@@ -382,7 +392,7 @@ export function generateFolderLabelsRTF(judges, context, paperSize) {
   }
   rtf += "}";
   const blob = new Blob([rtf], { type: "application/rtf" });
-  saveAs(blob, `${context.session.replace(/[^a-z0-9]/gi, '_')}_Folder_Labels.rtf`);
+  saveAs(blob, `${sanitizeText(context.session).replace(/[^a-z0-9]/gi, '_')}_Folder_Labels.rtf`);
 }
 
 // 4. GENERATE OVERLAYS ONLY (RTF)
@@ -390,7 +400,6 @@ export function generateOverlaysRTF(judges, competitors, context, paperSize) {
   const pw = paperSize === 'A4' ? 11906 : 12240;
   const ph = paperSize === 'A4' ? 16838 : 15840;
   
-  // Calculate the exact right margin for the tab stop (subtracting the 1000 twip left/right margins)
   const rightTab = pw - 2000;
   
   let rtf = `{\\rtf1\\ansi\\deff0\\nouicompat\\viewkind4\\uc1{\\fonttbl{\\f0\\fnil\\fcharset0 Arial;}}{\\colortbl ;\\red0\\green0\\blue0;}\\paperw${pw}\\paperh${ph}\\margl1000\\margr1000\\margt540\\margb1000\n`;
@@ -403,13 +412,9 @@ export function generateOverlaysRTF(judges, competitors, context, paperSize) {
       const compText = `${comp.Number}. ${comp.Name}`;
       const contestText = `${context.district} - ${context.session}, ${context.date}`;
       
-      // LINE 1: Centered Convention Info
       rtf += `\\pard\\qc\\sa100\\f0\\fs20 ${escapeRTF(contestText)}\\par\n`;
-      
-      // LINE 2: Competitor Info on Left, Judge Info on Right (Both 16pt Bold)
       rtf += `\\pard\\tqr\\tx${rightTab}\\sa100\\b\\fs32 ${escapeRTF(compText)} \\tab ${escapeRTF(judgeText)}\\b0\\par\n`;
       
-      // LINE 3: Left-aligned Director/Members (single line)
       if (comp.Director) {
         if (context.session.includes("Chorus")) {
           rtf += `\\pard\\ql\\sa100\\fs24 ${escapeRTF(comp.Director)}\\par\n`;
@@ -423,7 +428,7 @@ export function generateOverlaysRTF(judges, competitors, context, paperSize) {
   
   rtf += "}";
   const blob = new Blob([rtf], { type: "application/rtf" });
-  saveAs(blob, `${context.session.replace(/[^a-z0-9]/gi, '_')}_Text_Overlays.rtf`);
+  saveAs(blob, `${sanitizeText(context.session).replace(/[^a-z0-9]/gi, '_')}_Text_Overlays.rtf`);
 }
 
 // 5. GENERATE BLANK PDFs
